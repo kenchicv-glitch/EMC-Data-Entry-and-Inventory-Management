@@ -1,0 +1,24 @@
+E.M. CAYETANO HARDWARE BRAND GUIDELINES Version 1.0
+
+BRAND ESSENCE Reliable. Strong. Practical. Trustworthy.
+
+TONE OF VOICE Clear, professional, simple, approachable.
+
+COLOR PALETTE Industrial Yellow: #F6C90E Steel Gray: #4A4E5A Charcoal
+Black: #252627 White: #FFFFFF Safety Orange: #EE6C0E Slate Blue: #5A6E8C
+
+TYPOGRAPHY Primary Font: Roboto or Open Sans Header: 24pt Subheader:
+18pt Body: 14pt
+
+UI TEXT STANDARDS Screen Titles: ALL CAPS Field Labels: Sentence case
+
+BUTTON LABELS Add | Edit | Delete | Exit
+
+FORM STRUCTURE Sequence Number Tax Month TIN Registered Name Last Name
+First Name Middle Name Address Total Sales VAT Rate Gross Taxable
+
+NOTIFICATIONS Record added successfully. Error: Field required.
+
+ACCESSIBILITY High contrast Minimum 12pt font Keyboard navigation
+
+FILE NAMING EMCH_ScreenName_v1.txt

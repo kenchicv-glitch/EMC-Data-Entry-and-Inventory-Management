@@ -1,0 +1,181 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700;900&family=Open+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --font-roboto: "Roboto", "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-fira-code: "Fira Code", monospace;
+
+  --color-brand-red: #EE3E3E;
+  --color-brand-red-dark: #C53030;
+  --color-brand-red-light: #FFF5F5;
+  --color-brand-gray: #4A4E5A;
+  --color-brand-gray-light: #6B7280;
+  --color-brand-charcoal: #252627;
+  --color-brand-orange: #EE6C0E;
+  --color-brand-orange-light: #FEF0E7;
+  --color-brand-slate-blue: #5A6E8C;
+  --color-brand-slate-blue-light: #EEF2F7;
+
+  --shadow-bento: 0 4px 20px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --shadow-bento-hover: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  --shadow-red: 0 4px 14px 0 rgba(238, 62, 62, 0.3);
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 97%;
+    --foreground: 220 10% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 10% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 10% 15%;
+    --primary: 220 5% 15%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 10% 94%;
+    --secondary-foreground: 220 10% 15%;
+    --muted: 220 10% 94%;
+    --muted-foreground: 220 8% 46%;
+    --accent: 220 10% 94%;
+    --accent-foreground: 220 10% 15%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 220 5% 15%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: 'Roboto', 'Open Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+
+  /* Bento Card — the core UI building block */
+  .bento-card {
+    @apply bg-white rounded-2xl border border-slate-200 shadow-bento transition-all duration-200 hover:shadow-bento-hover hover:border-slate-300;
+  }
+
+  /* Sidebar nav item */
+  .sidebar-item {
+    @apply w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer;
+  }
+
+  .sidebar-item-active {
+    @apply bg-brand-red text-white font-bold border border-brand-red-dark shadow-red;
+  }
+
+  .sidebar-item-inactive {
+    @apply text-slate-500 hover:bg-slate-50 hover:text-brand-charcoal;
+  }
+
+  /* Stat badge */
+  .trend-up {
+    @apply flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded bg-green-50 text-green-600;
+  }
+
+  .trend-down {
+    @apply flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600;
+  }
+
+  /* Status badges */
+  .badge-in-stock {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700;
+  }
+
+  .badge-low-stock {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-700;
+  }
+
+  .badge-out-of-stock {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700;
+  }
+
+  .modal-input {
+    @apply w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 transition-all focus:border-brand-red focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20;
+  }
+
+  .modal-textarea {
+    @apply w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 transition-all focus:border-brand-red focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20;
+  }
+}
+
+@layer utilities {
+
+  /* Skeleton loading animation */
+  .skeleton {
+    background: linear-gradient(90deg,
+        #f0f0f0 25%,
+        #e0e0e0 50%,
+        #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #D1D5DB;
+    border-radius: 2px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #9CA3AF;
+  }
+
+  /* Font utilities */
+  .font-data {
+    font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
