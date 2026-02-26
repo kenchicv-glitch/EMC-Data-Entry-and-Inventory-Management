@@ -1,22 +1,10 @@
-<<<<<<< HEAD
 {
-    "cleanUrls": true,
-    "trailingSlash": false,
-    "rewrites": [
-        {
-            "source": "/(.*)",
-            "destination": "/index.html"
-        }
-    ]
-=======
-{
-    "cleanUrls": true,
-    "trailingSlash": false,
-    "rewrites": [
-        {
-            "source": "/(.*)",
-            "destination": "/index.html"
-        }
-    ]
->>>>>>> 3cb26d9051020959d5054e9c44825835cad118fe
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }
