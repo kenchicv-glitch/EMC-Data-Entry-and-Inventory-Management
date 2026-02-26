@@ -60,7 +60,7 @@ export default function Settings() {
                     </div>
                     Account Settings
                 </h1>
-                <p className="text-sm text-slate-500 mt-2 font-medium italic">Manage system access and account security</p>
+                <p className="text-sm text-slate-500 mt-2 font-medium">Manage system access and account security</p>
             </div>
 
             <div className="flex flex-col lg:flex-row gap-8">
@@ -88,7 +88,7 @@ export default function Settings() {
                                 <h3 className="text-sm font-black text-brand-charcoal uppercase tracking-widest flex items-center gap-2">
                                     <UsersIcon size={16} className="text-brand-red" /> Register Members
                                 </h3>
-                                <span className="px-3 py-1 bg-brand-red/5 text-brand-red text-[10px] font-black rounded-full uppercase tracking-widest italic">{profiles.length} total profiles</span>
+                                <span className="px-3 py-1 bg-brand-red/5 text-brand-red text-[10px] font-black rounded-full uppercase tracking-widest">{profiles.length} total profiles</span>
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="min-w-full">
@@ -146,7 +146,7 @@ export default function Settings() {
                                 <Lock className="text-brand-red" size={32} />
                             </div>
                             <h3 className="text-lg font-black text-brand-charcoal uppercase tracking-tight">Security Hardening</h3>
-                            <p className="text-sm text-slate-500 font-medium max-w-md mx-auto mt-2 italic">
+                            <p className="text-sm text-slate-500 font-medium max-w-md mx-auto mt-2">
                                 Advanced security protocols and access logs are being synchronized. Multi-factor authentication will be available in the next core update.
                             </p>
                         </div>

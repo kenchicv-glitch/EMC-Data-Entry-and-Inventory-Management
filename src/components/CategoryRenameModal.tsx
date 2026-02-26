@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { X, Save, AlertTriangle, Loader2 } from 'lucide-react';
 
@@ -14,6 +15,16 @@ export default function CategoryRenameModal({ isOpen, onClose, onSuccess, curren
     const [newName, setNewName] = useState(currentName);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    useEffect(() => {
+        if (isOpen) {
+            document.body.classList.add('modal-open');
+        } else {
+            document.body.classList.remove('modal-open');
+        }
+        return () => {
+            document.body.classList.remove('modal-open');
+        };
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -42,10 +53,8 @@ export default function CategoryRenameModal({ isOpen, onClose, onSuccess, curren
             }) || [];
 
             if (updates.length > 0) {
-                const updatePromises = updates.map(u => supabase.from('products').update({ name: u.name }).eq('id', u.id));
-                const results = await Promise.all(updatePromises);
-                const errors = results.filter(r => r.error);
-                if (errors.length > 0) throw new Error(`Failed to update ${errors.length} products`);
+                const { error: updateError } = await supabase.from('products').upsert(updates);
+                if (updateError) throw updateError;
             }
 
             onSuccess();
@@ -57,8 +66,8 @@ export default function CategoryRenameModal({ isOpen, onClose, onSuccess, curren
         }
     };
 
-    return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md px-4">
+    return createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-md px-4">
             <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden animate-slide-up">
                 <div className="flex items-center justify-between px-6 py-4 bg-brand-charcoal">
                     <div className="flex items-center gap-3 text-white">
@@ -70,13 +79,13 @@ export default function CategoryRenameModal({ isOpen, onClose, onSuccess, curren
                 <form onSubmit={handleRename} className="p-6 space-y-4">
                     <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-800 leading-relaxed font-medium">
                         <p>Renaming <span className="font-black">"{currentName}"</span> globally.</p>
-                        <p className="mt-1 opacity-80 italic">Updates all products using this category.</p>
+                        <p className="mt-1 opacity-80">Updates all products using this category.</p>
                     </div>
                     <div>
                         <label className="block text-[10px] font-black uppercase text-slate-500 mb-1.5">New Name</label>
                         <input type="text" autoFocus className="modal-input uppercase font-bold" value={newName} onChange={e => setNewName(e.target.value.toUpperCase())} required />
                     </div>
-                    {error && <div className="text-xs text-red-600 font-bold bg-red-50 p-3 rounded-lg border italic">Error: {error}</div>}
+                    {error && <div className="text-xs text-red-600 font-bold bg-red-50 p-3 rounded-lg border">Error: {error}</div>}
                     <div className="flex justify-end gap-3 pt-2">
                         <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Cancel</button>
                         <button type="submit" disabled={loading || !newName.trim() || newName.trim() === currentName} className="flex items-center gap-2 bg-brand-red text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-red disabled:opacity-50">
@@ -86,6 +95,7 @@ export default function CategoryRenameModal({ isOpen, onClose, onSuccess, curren
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

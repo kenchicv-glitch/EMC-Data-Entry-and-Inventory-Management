@@ -6,9 +6,11 @@ interface CalendarProps {
     selectedDate: Date;
     onDateSelect: (date: Date) => void;
     activeDates?: string[]; // Array of 'yyyy-MM-dd' strings
+    rangeStart?: Date | null;
+    rangeEnd?: Date | null;
 }
 
-export default function Calendar({ selectedDate, onDateSelect, activeDates = [] }: CalendarProps) {
+export default function Calendar({ selectedDate, onDateSelect, activeDates = [], rangeStart, rangeEnd }: CalendarProps) {
     const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
 
     const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
@@ -74,18 +76,23 @@ export default function Calendar({ selectedDate, onDateSelect, activeDates = [] 
                 const dayKey = format(day, 'yyyy-MM-dd');
                 const hasActivity = activeDates.includes(dayKey);
 
+                // Range logic
+                const isInRange = rangeStart && rangeEnd && day >= rangeStart && day <= rangeEnd;
+                const isRangeStart = rangeStart && isSameDay(day, rangeStart);
+                const isRangeEnd = rangeEnd && isSameDay(day, rangeEnd);
+
                 days.push(
                     <div
                         key={dayKey}
                         className={`relative py-3 flex flex-col items-center cursor-pointer transition-all hover:bg-slate-50 border-r border-b border-slate-50 last:border-r-0
                             ${!isCurrentMonth ? 'text-slate-200 pointer-events-none' : 'text-slate-600'}
-                            ${isSelected ? 'bg-brand-red/5 !text-brand-red font-black' : ''}
+                            ${isSelected || isRangeStart || isRangeEnd ? 'bg-brand-red !text-white font-black rounded-lg shadow-sm z-10' : ''}
+                            ${isInRange && !isRangeStart && !isRangeEnd ? 'bg-brand-red/10 !text-brand-red font-bold' : ''}
                         `}
                         onClick={() => onDateSelect(cloneDay)}
                     >
                         <span className="text-xs font-bold z-10">{formattedDate}</span>
-                        {hasActivity && <div className="absolute bottom-1 w-1.5 h-1.5 bg-brand-red rounded-full shadow-sm shadow-red/20 animate-pulse"></div>}
-                        {isSelected && <div className="absolute top-0 left-0 w-full h-1 bg-brand-red rounded-t-full"></div>}
+                        {hasActivity && <div className={`absolute bottom-1 w-1.5 h-1.5 rounded-full shadow-sm animate-pulse ${isSelected || isRangeStart || isRangeEnd ? 'bg-white shadow-white/20' : 'bg-brand-red shadow-red/20'}`}></div>}
                     </div>
                 );
                 day = addDays(day, 1);

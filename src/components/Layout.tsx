@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '../lib/AuthContext';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import {
     LayoutDashboard, ShoppingCart, Package, Truck,
-    RotateCcw, LogOut, Search, Bell, Plus, ClipboardList,
+    RotateCcw, LogOut, Bell, ClipboardList,
     ChevronDown, Menu, X, Tag, Wallet,
     Calendar, Settings as SettingsIcon, LineChart
 } from 'lucide-react';
@@ -23,7 +23,7 @@ const SidebarLink = ({ to, label, icon: Icon, end = false, onClick }: SidebarLin
         end={end}
         onClick={onClick}
         className={({ isActive }) =>
-            `sidebar-item ${isActive ? 'sidebar-item-active' : 'sidebar-item-inactive'}`
+            `sidebar-item transition-all duration-300 hover:scale-[1.02] ${isActive ? 'sidebar-item-active' : 'sidebar-item-inactive'}`
         }
     >
         {({ isActive }) => (
@@ -55,13 +55,22 @@ const Sidebar = ({ role, userEmail, userInitials, signOut, setIsSidebarOpen, ope
             <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-lg overflow-hidden border border-white/10 p-1">
                 <img src={logo} alt="EMC Logo" className="w-full h-full object-contain" />
             </div>
-            <div className="overflow-hidden">
+            <div className="overflow-hidden flex-1">
                 <h1 className="font-bold text-sm text-white leading-tight tracking-tight uppercase">
                     EMC Trading
                 </h1>
                 <p className="text-[10px] text-brand-red font-black uppercase tracking-[0.2em]">
                     Systems
                 </p>
+            </div>
+            <div className="flex items-center gap-1">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-white/10 shadow-sm cursor-pointer transition-all" title="Checklist">
+                    <ClipboardList size={18} />
+                </div>
+                <div className="relative w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-white/10 hover:text-brand-red shadow-sm cursor-pointer transition-all" title="Notifications">
+                    <Bell size={18} />
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-orange rounded-full border-2 border-brand-charcoal ring-2 ring-brand-orange/20 animate-pulse" />
+                </div>
             </div>
         </div>
 
@@ -76,9 +85,9 @@ const Sidebar = ({ role, userEmail, userInitials, signOut, setIsSidebarOpen, ope
                 </button>
                 {openMenus.overview && (
                     <div className="space-y-1 mt-1 animate-slide-up">
-                        <SidebarLink to="/" label="Dashboard" icon={LayoutDashboard} end={true} onClick={() => setIsSidebarOpen(false)} />
-                        <SidebarLink to="/sales" label="Sales History" icon={ShoppingCart} onClick={() => setIsSidebarOpen(false)} />
-                        <SidebarLink to="/purchases" label="Purchase History" icon={Truck} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink to="/" label="Overview" icon={LayoutDashboard} end={true} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink to="/sales" label="Sales" icon={ShoppingCart} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink to="/purchases" label="Purchases" icon={Truck} onClick={() => setIsSidebarOpen(false)} />
                         <SidebarLink to="/inventory" label="Inventory" icon={Package} onClick={() => setIsSidebarOpen(false)} />
                         <SidebarLink to="/returns" label="Supplier Returns" icon={RotateCcw} onClick={() => setIsSidebarOpen(false)} />
                         <SidebarLink to="/customer-refunds" label="Customer Refunds" icon={RotateCcw} onClick={() => setIsSidebarOpen(false)} />
@@ -115,8 +124,7 @@ const Sidebar = ({ role, userEmail, userInitials, signOut, setIsSidebarOpen, ope
                     {openMenus.admin && (
                         <div className="space-y-1 mt-1 animate-slide-up">
                             <SidebarLink to="/profit" label="Profit Analysis" icon={LineChart} onClick={() => setIsSidebarOpen(false)} />
-                            <SidebarLink to="/supplier-pricelist" label="Supplier Pricelist" icon={Truck} onClick={() => setIsSidebarOpen(false)} />
-                            <SidebarLink to="/pricelist" label="Selling Pricelist" icon={Tag} onClick={() => setIsSidebarOpen(false)} />
+                            <SidebarLink to="/admin-pricelist" label="Admin Pricelist" icon={Tag} onClick={() => setIsSidebarOpen(false)} />
                             <SidebarLink to="/settings" label="Settings" icon={SettingsIcon} onClick={() => setIsSidebarOpen(false)} />
                         </div>
                     )}
@@ -148,6 +156,7 @@ const Sidebar = ({ role, userEmail, userInitials, signOut, setIsSidebarOpen, ope
 export default function Layout() {
     const { user, role, signOut, loading } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
         overview: true,
@@ -217,38 +226,10 @@ export default function Layout() {
                             <p className="text-sm font-bold text-brand-charcoal flex items-center gap-2">Main Store Distribution <ChevronDown size={14} /></p>
                         </div>
                     </div>
-
-                    <div className="flex-1 max-w-xl mx-8 hidden xl:block">
-                        <div className="relative group">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-red transition-colors" size={18} />
-                            <input
-                                type="text"
-                                placeholder="Global search..."
-                                className="w-full bg-slate-100/50 border border-slate-200 rounded-2xl pl-12 pr-4 py-3 text-sm focus:bg-white outline-none transition-all"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
-                            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-white shadow-sm cursor-pointer">
-                                <Search size={18} className="xl:hidden" />
-                                <ClipboardList size={18} className="hidden xl:block" />
-                            </div>
-                            <div className="relative w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-white hover:text-brand-red shadow-sm cursor-pointer">
-                                <Bell size={18} />
-                                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-orange rounded-full border-2 border-white ring-2 ring-brand-orange/20 animate-pulse" />
-                            </div>
-                        </div>
-                        <NavLink to="/sales" className="hidden sm:flex items-center gap-2 bg-brand-charcoal hover:bg-black text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl transition-all">
-                            <Plus size={16} />
-                            <span>Quick Entry</span>
-                        </NavLink>
-                    </div>
                 </header>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#f8fafc]">
-                    <div className="p-8 lg:p-10 max-w-[1600px] mx-auto">
+                    <div className="p-8 lg:p-10 max-w-[1600px] mx-auto animate-page-entry" key={location.pathname}>
                         <Outlet />
                     </div>
                 </div>

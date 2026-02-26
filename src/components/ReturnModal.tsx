@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { X, RotateCcw, Trash2, AlertTriangle } from 'lucide-react';
+import { X, RotateCcw, Trash2, AlertTriangle, Search, ChevronDown } from 'lucide-react';
 
 interface Product {
     id: string;
-    sku: string;
     name: string;
     stock_available: number;
 }
@@ -12,10 +12,17 @@ interface Product {
 interface ReturnItem {
     productId: string;
     productName: string;
-    sku: string;
     quantity: number;
     unitPrice: number;
     totalPrice: number;
+    searchQuery?: string;
+    isSearchOpen?: boolean;
+    currentLevel?: 'master' | 'category' | 'subcategory' | 'product';
+    selectedPath?: {
+        master?: string;
+        category?: string;
+        subcategory?: string;
+    };
 }
 
 interface ReturnModalProps {
@@ -40,38 +47,88 @@ export default function ReturnModal({ isOpen, onClose, onSuccess }: ReturnModalP
             setInvoiceNumber('');
             setReason('');
             setError(null);
+            document.body.classList.add('modal-open');
+        } else {
+            document.body.classList.remove('modal-open');
         }
+        return () => {
+            document.body.classList.remove('modal-open');
+        };
     }, [isOpen]);
 
     const fetchProducts = async () => {
-        const { data, error } = await supabase.from('products').select('id, sku, name, stock_available').order('name');
+        const { data, error } = await supabase.from('products').select('id, name, stock_available').order('name');
         if (error) console.error('Error fetching products:', error);
         else setProducts(data || []);
     };
 
-    const groupedByHierarchy = products.reduce((groups: Record<string, Product[]>, p) => {
-        const hierarchy = p.name.includes(' > ') ? p.name.split(' > ').slice(0, -1).join(' > ') : 'Uncategorized';
-        if (!groups[hierarchy]) groups[hierarchy] = [];
-        groups[hierarchy].push(p);
-        return groups;
-    }, {});
-
-    const sortedHierarchies = Object.keys(groupedByHierarchy).sort();
 
     const addItem = () => {
-        setItems([...items, { productId: '', productName: '', sku: '', quantity: 1, unitPrice: 0, totalPrice: 0 }]);
+        setItems([...items, {
+            productId: '',
+            productName: '',
+            quantity: 1,
+            unitPrice: 0,
+            totalPrice: 0,
+            searchQuery: '',
+            isSearchOpen: false,
+            currentLevel: 'master',
+            selectedPath: {}
+        }]);
+    };
+
+    const dropdownRefs = React.useRef<(HTMLDivElement | null)[]>([]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            dropdownRefs.current.forEach((ref, index) => {
+                if (ref && !ref.contains(event.target as Node)) {
+                    setItems(prev => {
+                        const next = [...prev];
+                        if (next[index]) next[index].isSearchOpen = false;
+                        return next;
+                    });
+                }
+            });
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const selectProduct = (index: number, product: Product) => {
+        const newItems = [...items];
+        newItems[index] = {
+            ...newItems[index],
+            productId: product.id,
+            productName: product.name,
+            unitPrice: product.name.includes(' > ') ? 0 : 0, // Placeholder, usually unit price is fetched or edited
+            totalPrice: newItems[index].quantity * 0, // Placeholder
+            searchQuery: product.name,
+            isSearchOpen: false
+        };
+        // Attempt to fetch price if needed, but for returns it's often manual
+        setItems(newItems);
     };
 
     const updateItem = (index: number, updates: Partial<ReturnItem>) => {
         const newItems = [...items];
         const item = { ...newItems[index], ...updates };
+
         if (updates.productId) {
             const product = products.find(p => p.id === updates.productId);
             if (product) {
                 item.productName = product.name;
-                item.sku = product.sku;
             }
         }
+
+        if (updates.searchQuery !== undefined) {
+            item.isSearchOpen = true;
+            if (!updates.searchQuery) {
+                item.productId = '';
+                item.productName = '';
+            }
+        }
+
         item.totalPrice = item.quantity * item.unitPrice;
         newItems[index] = item;
         setItems(newItems);
@@ -111,7 +168,7 @@ export default function ReturnModal({ isOpen, onClose, onSuccess }: ReturnModalP
                 vat_amount: isVatEnabled ? (item.totalPrice - (item.totalPrice / 1.12)) : 0
             }));
 
-            const { data, error: insertError } = await supabase.from('supplier_returns').insert(returnRecords).select('*, products(name, sku)');
+            const { data, error: insertError } = await supabase.from('supplier_returns').insert(returnRecords).select('*, products(name)');
             if (insertError) throw insertError;
 
             for (const item of items) {
@@ -132,9 +189,9 @@ export default function ReturnModal({ isOpen, onClose, onSuccess }: ReturnModalP
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-            <div className="w-full max-w-5xl rounded-2xl bg-white shadow-2xl border flex flex-col max-h-[95vh] animate-slide-up">
+    return createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md px-4">
+            <div className="w-full max-w-5xl rounded-2xl bg-white shadow-2xl border flex flex-col max-h-[95vh] animate-slide-up overflow-hidden">
                 <div className="flex items-center justify-between px-6 py-4 bg-brand-charcoal">
                     <div className="flex items-center gap-3 text-white">
                         <div className="w-8 h-8 bg-brand-red rounded-lg flex items-center justify-center"><RotateCcw size={16} /></div>
@@ -157,7 +214,67 @@ export default function ReturnModal({ isOpen, onClose, onSuccess }: ReturnModalP
                                 {items.map((item, index) => (
                                     <div key={index} className="flex gap-4 p-4 border rounded-2xl bg-white hover:border-brand-red/30 transition-all">
                                         <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
-                                            <div className="md:col-span-2"><select required className="modal-input" value={item.productId} onChange={e => updateItem(index, { productId: e.target.value })}><option value="">Select product...</option>{sortedHierarchies.map(h => <optgroup key={h} label={h}>{groupedByHierarchy[h].map(p => <option key={p.id} value={p.id}>{p.sku} — {p.name.split(' > ').pop()} ({p.stock_available})</option>)}</optgroup>)}</select></div>
+                                            <div className="md:col-span-2 relative" ref={el => { dropdownRefs.current[index] = el; }}>
+                                                <div className="relative">
+                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Search size={14} /></div>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Focus to search product..."
+                                                        className="modal-input pl-9 pr-8"
+                                                        value={item.searchQuery}
+                                                        onChange={(e) => updateItem(index, { searchQuery: e.target.value })}
+                                                        onFocus={() => updateItem(index, { isSearchOpen: true })}
+                                                        required
+                                                    />
+                                                    {item.searchQuery && (
+                                                        <button type="button" onClick={() => updateItem(index, { searchQuery: '', productId: '', unitPrice: 0, currentLevel: 'master', selectedPath: {}, isSearchOpen: false })} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-brand-red transition-colors">
+                                                            <X size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {item.isSearchOpen && (
+                                                    <div className="absolute z-[100] left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] max-h-[300px] overflow-hidden flex flex-col min-w-[350px] animate-fade-in">
+                                                        {!item.searchQuery && item.currentLevel !== 'master' && (
+                                                            <div className="px-4 py-2 bg-slate-50 border-b flex items-center gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => updateItem(index, { currentLevel: 'master' })}
+                                                                    className="flex items-center gap-1.5 text-[10px] font-black uppercase text-brand-red hover:text-brand-red-dark transition-colors"
+                                                                >
+                                                                    <ChevronDown size={14} className="rotate-90" />
+                                                                    Back
+                                                                </button>
+                                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.selectedPath?.master}</span>
+                                                            </div>
+                                                        )}
+                                                        <div className="flex-1 overflow-y-auto">
+                                                            {item.searchQuery ? (
+                                                                products.filter(p => p.name.toLowerCase().includes(item.searchQuery?.toLowerCase() || '')).map(p => (
+                                                                    <button key={p.id} type="button" onClick={() => selectProduct(index, p)} className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex flex-col">
+                                                                        <span className="text-[11px] font-black text-brand-charcoal uppercase">{p.name}</span>
+                                                                        <span className="text-[9px] text-slate-400 font-data uppercase tracking-widest">STK: {p.stock_available}</span>
+                                                                    </button>
+                                                                ))
+                                                            ) : item.currentLevel === 'master' ? (
+                                                                Array.from(new Set(products.map(p => p.name.split(' > ')[0]))).sort().map(m => (
+                                                                    <button key={m} type="button" onClick={() => updateItem(index, { selectedPath: { master: m }, currentLevel: 'product' })} className="w-full text-left px-5 py-3 hover:bg-slate-50 border-b flex items-center justify-between group">
+                                                                        <span className="text-[11px] font-black text-brand-charcoal uppercase">{m}</span>
+                                                                        <ChevronDown size={14} className="-rotate-90 text-slate-300 group-hover:text-brand-red" />
+                                                                    </button>
+                                                                ))
+                                                            ) : (
+                                                                products.filter(p => p.name.split(' > ')[0] === item.selectedPath?.master).map(p => (
+                                                                    <button key={p.id} type="button" onClick={() => selectProduct(index, p)} className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b flex flex-col">
+                                                                        <span className="text-[11px] font-black text-brand-charcoal uppercase">{p.name.split(' > ').slice(1).join(' > ')}</span>
+                                                                        <span className="text-[9px] text-slate-400 font-data">STK: {p.stock_available}</span>
+                                                                    </button>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                             <div><input type="number" min="1" className="modal-input font-data text-center" value={item.quantity} onChange={e => updateItem(index, { quantity: parseInt(e.target.value) || 0 })} required /></div>
                                             <div><input type="number" step="0.01" className="modal-input font-data" value={item.unitPrice} onChange={e => updateItem(index, { unitPrice: parseFloat(e.target.value) || 0 })} required /></div>
                                         </div>
@@ -169,7 +286,7 @@ export default function ReturnModal({ isOpen, onClose, onSuccess }: ReturnModalP
                     </form>
                 </div>
 
-                <div className="px-8 py-6 bg-brand-charcoal flex flex-col md:flex-row items-end md:items-center justify-between gap-8 relative overflow-hidden">
+                <div className="px-8 py-6 bg-brand-charcoal flex flex-col md:flex-row items-end md:items-center justify-between gap-8 relative overflow-hidden text-right">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-brand-red/10 rounded-full blur-3xl -mr-32 -mt-32" />
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 text-white/60 relative z-10">
                         <div><p className="text-[10px] font-black uppercase opacity-50">Total Return</p><p className="text-lg font-black font-data text-white">₱{subtotal.toLocaleString()}</p></div>
@@ -185,6 +302,7 @@ export default function ReturnModal({ isOpen, onClose, onSuccess }: ReturnModalP
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

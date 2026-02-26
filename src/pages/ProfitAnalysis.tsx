@@ -8,7 +8,7 @@ import {
     TrendingUp, DollarSign, PieChart as PieChartIcon,
     Activity, Calendar as CalendarIcon
 } from 'lucide-react';
-import { startOfMonth, endOfMonth, format, isSameDay } from 'date-fns';
+import { startOfDay, endOfDay, format, isSameDay } from 'date-fns';
 import Calendar from '../components/Calendar';
 
 interface ProfitStats {
@@ -31,9 +31,9 @@ interface SupabaseSale {
     quantity: number;
     vat_amount: number;
     date: string;
+    cost_price: number;
     products: {
         name: string;
-        buying_price: number;
     } | null;
 }
 
@@ -56,29 +56,31 @@ export default function ProfitAnalysis() {
     });
     const [categoryData, setCategoryData] = useState<CategoryProfit[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+    const [dateRange, setDateRange] = useState<{ start: Date, end: Date }>({
+        start: new Date(),
+        end: new Date()
+    });
+    const [isDateRangeActive, setIsDateRangeActive] = useState(false);
     const [groupedSales, setGroupedSales] = useState<Record<string, GroupedSale>>({});
 
     const fetchProfitData = useCallback(async () => {
         setLoading(true);
-        const monthStart = startOfMonth(selectedDate).toISOString();
-        const monthEnd = endOfMonth(selectedDate).toISOString();
+        const rangeStart = startOfDay(dateRange.start).toISOString();
+        const rangeEnd = endOfDay(dateRange.end).toISOString();
 
-        // 1. Fetch Sales with Product Buying Price
-        const { data: salesData, error: salesError } = await supabase
+        // 1. Fetch Sales
+        const { data: salesData } = await supabase
             .from('sales')
-            .select('total_price, quantity, vat_amount, date, products(name, buying_price)')
-            .gte('date', monthStart)
-            .lte('date', monthEnd);
+            .select('total_price, quantity, vat_amount, date, cost_price, products(name)')
+            .gte('date', rangeStart)
+            .lte('date', rangeEnd);
 
-        if (salesError) console.error(salesError);
-
-        // 2. Fetch Expenses for the month
+        // 2. Fetch Expenses
         const { data: expensesData } = await supabase
             .from('expenses')
             .select('amount, date')
-            .gte('date', monthStart)
-            .lte('date', monthEnd);
+            .gte('date', rangeStart)
+            .lte('date', rangeEnd);
 
         const sales = (salesData as unknown as SupabaseSale[]) || [];
         const expenses = expensesData || [];
@@ -94,36 +96,30 @@ export default function ProfitAnalysis() {
         });
         setGroupedSales(salesByDate);
 
-        // Calculate Stats for the SELECTED DATE
-        const dailySales = sales.filter(s => isSameDay(new Date(s.date), selectedDate));
-        const dailyExpenses = expenses.filter(e => isSameDay(new Date(e.date), selectedDate));
-
-        const revenue = dailySales.reduce((sum, s) => sum + s.total_price, 0);
-        const vat = dailySales.reduce((sum, s) => sum + (s.vat_amount || 0), 0);
-        const cogs = dailySales.reduce((sum, s) => {
-            const buyingPrice = s.products?.buying_price || 0;
-            return sum + (s.quantity * buyingPrice);
-        }, 0);
-        const expenseTotal = dailyExpenses.reduce((sum, e) => sum + e.amount, 0);
+        // All aggregated stats for the selected range
+        const totalRevenue = sales.reduce((sum, s) => sum + s.total_price, 0);
+        const totalVAT = sales.reduce((sum, s) => sum + (s.vat_amount || 0), 0);
+        const totalCOGS = sales.reduce((sum, s) => sum + (s.quantity * (s.cost_price || 0)), 0);
+        const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
 
         setStats({
-            totalRevenue: revenue,
-            totalCOGS: cogs,
-            grossProfit: revenue - cogs,
-            netProfit: (revenue - cogs) - expenseTotal,
-            totalExpenses: expenseTotal,
-            vatAmount: vat
+            totalRevenue,
+            totalCOGS,
+            grossProfit: totalRevenue - totalCOGS,
+            netProfit: (totalRevenue - totalCOGS) - totalExpenses,
+            totalExpenses,
+            vatAmount: totalVAT
         });
 
-        // 3. Category Breakdown (for the whole month or selected date? Let's do month for better chart)
+        // Category Breakdown
         const cats: Record<string, { profit: number; revenue: number }> = {};
         sales.forEach(s => {
             const nameParts = s.products?.name.split(' > ') || ['Uncategorized'];
             const l1 = nameParts[0];
             if (!cats[l1]) cats[l1] = { profit: 0, revenue: 0 };
-            const buyingPrice = s.products?.buying_price || 0;
+            const cost = s.cost_price || 0;
             cats[l1].revenue += s.total_price;
-            cats[l1].profit += (s.total_price - (s.quantity * buyingPrice));
+            cats[l1].profit += (s.total_price - (s.quantity * cost));
         });
 
         setCategoryData(Object.entries(cats).map(([name, data]) => ({
@@ -133,7 +129,7 @@ export default function ProfitAnalysis() {
         })).sort((a, b) => b.profit - a.profit));
 
         setLoading(false);
-    }, [selectedDate]);
+    }, [dateRange]);
 
     useEffect(() => {
         let mounted = true;
@@ -144,73 +140,143 @@ export default function ProfitAnalysis() {
         return () => { mounted = false; };
     }, [fetchProfitData]);
 
+    const handleDateSelect = (date: Date) => {
+        if (!isDateRangeActive) {
+            setDateRange({ start: date, end: date });
+            return;
+        }
+
+        if (!dateRange.start || (dateRange.start && dateRange.end && !isSameDay(dateRange.start, dateRange.end))) {
+            setDateRange({ start: date, end: date });
+        } else {
+            const newRange = date < dateRange.start
+                ? { start: date, end: dateRange.start }
+                : { start: dateRange.start, end: date };
+            setDateRange(newRange);
+        }
+    };
+
     const activeDates = Object.keys(groupedSales);
 
     return (
-        <div className="space-y-6 animate-fade-in pb-10">
+        <div className="space-y-8 animate-fade-in pb-10">
+            {/* Standard Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div>
-                    <h1 className="text-3xl font-black text-brand-charcoal tracking-tight flex items-center gap-3">
-                        <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-200"><TrendingUp className="text-white" size={24} /></div>
-                        Profit Analysis
-                    </h1>
-                    <p className="text-slate-500 mt-1 font-medium">Real-time profitability and margin tracking</p>
+                <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-white rounded-[24px] flex items-center justify-center shadow-xl border border-slate-100 group transition-all hover:scale-105 active:scale-95">
+                        <TrendingUp className="text-brand-red group-hover:rotate-12 transition-transform" size={28} />
+                    </div>
+                    <div>
+                        <h1 className="text-3xl font-black text-brand-charcoal tracking-tight uppercase">Profit Analysis</h1>
+                        <p className="text-sm text-slate-500 mt-1 font-medium">Real-time profitability and margin tracking</p>
+                    </div>
                 </div>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-6">
-                <div className="flex-shrink-0">
-                    <div className="sticky top-6">
-                        <Calendar selectedDate={selectedDate} onDateSelect={setSelectedDate} activeDates={activeDates} />
-                        <div className="mt-6 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                            <h3 className="text-[10px] font-black text-slate-400 border-b border-slate-50 pb-3 mb-4 uppercase tracking-[0.2em]">Quick Metrics</h3>
-                            <div className="space-y-4">
-                                <div><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Gross Margin</p><p className="text-xl font-black text-emerald-600 font-data">{stats.totalRevenue > 0 ? ((stats.grossProfit / stats.totalRevenue) * 100).toFixed(1) : 0}%</p></div>
-                                <div><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">VAT Payable</p><p className="text-xl font-black text-brand-charcoal font-data">₱{stats.vatAmount.toLocaleString()}</p></div>
+            <div className="flex flex-col lg:flex-row gap-8">
+                {/* Sidebar Controls */}
+                <div className="flex-shrink-0 w-full lg:w-80">
+                    <div className="sticky top-6 space-y-6">
+                        <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-5">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.2em]">Summary Period</h3>
+                                <button
+                                    onClick={() => setIsDateRangeActive(!isDateRangeActive)}
+                                    className={`text-[9px] font-black px-3 py-1 rounded-full uppercase transition-all ${isDateRangeActive ? 'bg-brand-red text-white shadow-red' : 'bg-slate-100 text-slate-400'}`}
+                                >
+                                    {isDateRangeActive ? 'Range' : 'Single Day'}
+                                </button>
+                            </div>
+                            <div className="flex items-center justify-between bg-slate-50/80 p-3 rounded-2xl border border-slate-100/50">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    Selection
+                                </span>
+                                {(dateRange.start && dateRange.end) && (
+                                    <span className="text-[10px] font-black text-brand-red">
+                                        {isDateRangeActive && !isSameDay(dateRange.start, dateRange.end)
+                                            ? `${format(dateRange.start, 'MMM d')} - ${format(dateRange.end, 'MMM d')}`
+                                            : format(dateRange.start, 'MMM d, yyyy')}
+                                    </span>
+                                )}
+                            </div>
+                            <Calendar
+                                selectedDate={dateRange.start}
+                                onDateSelect={handleDateSelect}
+                                rangeStart={isDateRangeActive ? dateRange.start : null}
+                                rangeEnd={isDateRangeActive ? dateRange.end : null}
+                                activeDates={activeDates}
+                            />
+                        </div>
+
+                        <div className="bg-white p-7 rounded-[32px] border border-slate-100 shadow-sm">
+                            <h3 className="text-[10px] font-black text-slate-400 border-b border-slate-50 pb-4 mb-5 uppercase tracking-[0.2em]">Efficiency KPIs</h3>
+                            <div className="space-y-6">
+                                <div>
+                                    <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2">Effective Gross Margin</p>
+                                    <p className="text-2xl font-black text-emerald-600 font-data">
+                                        {stats.totalRevenue > 0 ? ((stats.grossProfit / stats.totalRevenue) * 100).toFixed(1) : '0.0'}%
+                                    </p>
+                                </div>
+                                <div className="pt-4 border-t border-slate-50">
+                                    <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest mb-2">VAT Liability (Estimated)</p>
+                                    <p className="text-2xl font-black text-brand-charcoal font-data">
+                                        ₱{stats.vatAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex-1 space-y-6 min-w-0">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+                <div className="flex-1 space-y-8 min-w-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
                         <MetricCard icon={<DollarSign size={20} />} label="Total Revenue" value={stats.totalRevenue} color="text-brand-charcoal" loading={loading} />
-                        <MetricCard icon={<Activity size={20} />} label="Total COGS" value={stats.totalCOGS} color="text-slate-500" loading={loading} />
+                        <MetricCard icon={<Activity size={20} />} label="Cost of Goods" value={stats.totalCOGS} color="text-slate-500" loading={loading} />
                         <MetricCard icon={<TrendingUp size={20} />} label="Gross Profit" value={stats.grossProfit} color="text-emerald-600" loading={loading} />
                         <MetricCard icon={<TrendingUp size={20} />} label="Net Profit" value={stats.netProfit} color="text-blue-600" loading={loading} />
                     </div>
 
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                        <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
-                            <div className="flex items-center justify-between mb-8">
-                                <div><h3 className="text-lg font-black text-brand-charcoal flex items-center gap-2 tracking-tight"><PieChartIcon size={20} className="text-brand-red" /> PROFIT BY CATEGORY</h3><p className="text-xs text-slate-400 font-medium">Monthly breakdown by Master Category</p></div>
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                        {/* CHART 1: Category Breakdown */}
+                        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                <PieChartIcon size={64} className="text-brand-red" />
                             </div>
-                            <div className="h-[300px]">
+                            <div className="mb-10">
+                                <h3 className="text-sm font-black text-brand-charcoal uppercase tracking-[0.1em]">Profit by Master Category</h3>
+                                <p className="text-xs text-slate-500 font-medium mt-1">Weighted distribution of net earnings</p>
+                            </div>
+                            <div className="h-[320px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <PieChart>
-                                        <Pie data={categoryData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="profit">
+                                        <Pie data={categoryData} cx="50%" cy="50%" innerRadius={70} outerRadius={110} paddingAngle={8} dataKey="profit" stroke="none">
                                             {categoryData.map((_, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}
                                         </Pie>
-                                        <Tooltip formatter={(v: number | string | undefined) => v !== undefined ? `₱${Number(v).toLocaleString()}` : ''} />
-                                        <Legend verticalAlign="bottom" height={36} />
+                                        <Tooltip
+                                            contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', padding: '15px' }}
+                                            formatter={(v: any) => [`₱${Number(v).toLocaleString()}`, 'Profit']}
+                                        />
+                                        <Legend verticalAlign="bottom" height={40} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', paddingTop: '20px' }} />
                                     </PieChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
 
-                        <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
-                            <div className="flex items-center justify-between mb-8">
-                                <div><h3 className="text-lg font-black text-brand-charcoal flex items-center gap-2 tracking-tight"><Activity size={20} className="text-brand-red" /> REVENUE VS PROFIT</h3><p className="text-xs text-slate-400 font-medium">Comparative performance analysis</p></div>
+                        {/* CHART 2: Revenue vs Profit */}
+                        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+                            <div className="mb-10">
+                                <h3 className="text-sm font-black text-brand-charcoal uppercase tracking-[0.1em]">Revenue vs Margin</h3>
+                                <p className="text-xs text-slate-500 font-medium mt-1">Comparative top-line and bottom-line growth</p>
                             </div>
-                            <div className="h-[300px]">
+                            <div className="h-[320px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={categoryData.slice(0, 5)} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
-                                        <Tooltip cursor={{ fill: '#f8fafc' }} formatter={(v: number | string | undefined) => v !== undefined ? `₱${Number(v).toLocaleString()}` : ''} />
-                                        <Bar dataKey="revenue" fill="#EE3E3E" radius={[4, 4, 0, 0]} barSize={24} name="Revenue" />
-                                        <Bar dataKey="profit" fill="#10B981" radius={[4, 4, 0, 0]} barSize={24} name="Profit" />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800, fill: '#94a3b8' }} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800, fill: '#94a3b8' }} />
+                                        <Tooltip cursor={{ fill: '#f8fafc' }} formatter={(v: any) => `₱${Number(v).toLocaleString()}`} />
+                                        <Bar dataKey="revenue" fill="#EE3E3E" radius={[10, 10, 0, 0]} barSize={28} name="Revenue" />
+                                        <Bar dataKey="profit" fill="#10B981" radius={[10, 10, 0, 0]} barSize={28} name="Profit" />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -226,10 +292,10 @@ function MetricCard({ icon, label, value, color, loading }: { icon: React.ReactN
     return (
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400">{icon}</div>
-                <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><CalendarIcon size={12} /> Today</div>
+                <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-600">{icon}</div>
+                <div className="flex items-center gap-1 text-[10px] font-bold text-slate-600 uppercase tracking-widest"><CalendarIcon size={12} /> Today</div>
             </div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">{label}</p>
+            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-1">{label}</p>
             {loading ? <div className="h-8 bg-slate-50 animate-pulse rounded w-24"></div> : <p className={`text-2xl font-black ${color} font-data`}>₱{value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>}
         </div>
     );

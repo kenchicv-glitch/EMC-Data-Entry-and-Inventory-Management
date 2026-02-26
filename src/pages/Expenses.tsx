@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { Wallet, Plus, Search, Filter, Trash2, Calendar as CalendarIcon } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import ExpenseModal from '../components/ExpenseModal';
-import { useAuth } from '../lib/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import Calendar from '../components/Calendar';
 
 interface Expense {
@@ -81,23 +81,23 @@ export default function Expenses() {
     const totalExpenses = filtered.reduce((sum, ex) => sum + ex.amount, 0);
 
     return (
-        <div className="space-y-6 animate-fade-in pb-10">
-            {/* Header */}
+        <div className="space-y-8 animate-fade-in pb-10">
+            {/* Standard Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div>
-                    <h1 className="text-3xl font-black text-brand-charcoal tracking-tight flex items-center gap-3 font-data uppercase">
-                        <div className="w-12 h-12 bg-brand-charcoal rounded-2xl flex items-center justify-center shadow-sm">
-                            <Wallet className="text-white" size={24} />
-                        </div>
-                        Operating Expenses
-                    </h1>
-                    <p className="text-slate-500 mt-1 font-medium">Track daily payouts, salaries, and donations</p>
+                <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-white rounded-[24px] flex items-center justify-center shadow-xl border border-slate-100 group transition-all hover:scale-105 active:scale-95">
+                        <Wallet className="text-brand-red group-hover:rotate-12 transition-transform" size={28} />
+                    </div>
+                    <div>
+                        <h1 className="text-3xl font-black text-brand-charcoal tracking-tight uppercase">Operating Expenses</h1>
+                        <p className="text-sm text-slate-500 mt-1 font-medium italic-none">Track daily payouts, salaries, and donations</p>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-3">
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="flex items-center gap-2 bg-brand-red text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-brand-red-dark transition-all shadow-red active:scale-95"
+                        className="flex items-center gap-2 bg-brand-charcoal text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-black transition-all shadow-lg active:scale-95"
                     >
                         <Plus size={18} /> RECORD EXPENSE
                     </button>
@@ -141,16 +141,16 @@ export default function Expenses() {
                             activeDates={activeDates}
                         />
                         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                            <h3 className="text-[10px] font-black text-slate-400 border-b border-slate-50 pb-3 mb-4 uppercase tracking-[0.2em]">Summary Statistics</h3>
+                            <h3 className="text-[10px] font-black text-slate-600 border-b border-slate-50 pb-3 mb-4 uppercase tracking-[0.2em]">Summary Statistics</h3>
                             <div className="space-y-4">
                                 <div>
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Daily Total</p>
+                                    <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">Daily Total</p>
                                     <p className="text-xl font-black text-brand-red font-data">
                                         ₱{totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </p>
                                 </div>
                                 <div>
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Transaction Count</p>
+                                    <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">Transaction Count</p>
                                     <p className="text-xl font-black text-brand-charcoal font-data">{filtered.length}</p>
                                 </div>
                             </div>
@@ -165,12 +165,12 @@ export default function Expenses() {
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="bg-slate-50/50 border-b border-slate-100">
-                                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest w-10"></th>
-                                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Reference / Time</th>
-                                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Category</th>
-                                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Description</th>
-                                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
-                                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest w-10"></th>
+                                        <th className="px-6 py-4 text-[11px] font-black text-brand-charcoal uppercase tracking-widest w-10"></th>
+                                        <th className="px-6 py-4 text-[11px] font-black text-brand-charcoal uppercase tracking-widest">Reference / Time</th>
+                                        <th className="px-6 py-4 text-[11px] font-black text-brand-charcoal uppercase tracking-widest">Category</th>
+                                        <th className="px-6 py-4 text-[11px] font-black text-brand-charcoal uppercase tracking-widest">Description</th>
+                                        <th className="px-6 py-4 text-[11px] font-black text-brand-charcoal uppercase tracking-widest text-right">Amount</th>
+                                        <th className="px-6 py-4 text-[11px] font-black text-brand-charcoal uppercase tracking-widest w-10"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
@@ -228,7 +228,7 @@ export default function Expenses() {
                                                         <CalendarIcon size={32} className="text-slate-200" />
                                                     </div>
                                                     <div>
-                                                        <p className="text-lg font-bold text-slate-400 italic">No expenses recorded for this date.</p>
+                                                        <p className="text-lg font-bold text-slate-400">No expenses recorded for this date.</p>
                                                     </div>
                                                 </div>
                                             </td>
