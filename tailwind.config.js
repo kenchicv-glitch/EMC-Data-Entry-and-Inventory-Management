@@ -10,8 +10,31 @@ export default {
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",
                 ring: "hsl(var(--ring))",
-                background: "hsl(var(--background))",
-                foreground: "hsl(var(--foreground))",
+                background: "var(--bg-base)",
+                foreground: "var(--text-primary)",
+
+                // Semantic Colors
+                // Semantic Colors
+                'base': 'var(--bg-base)',
+                'surface': 'var(--bg-surface)',
+                'subtle': 'var(--bg-subtle)',
+                'muted': 'var(--bg-muted)',
+                'text-primary': 'var(--text-primary)',
+                'text-secondary': 'var(--text-secondary)',
+                'text-muted': 'var(--text-muted)',
+                'text-inverse': 'var(--text-inverse)',
+                'border-default': 'var(--border-default)',
+                'border-strong': 'var(--border-strong)',
+                'accent': 'var(--accent-primary)',
+                'accent-hover': 'var(--accent-hover)',
+                'accent-subtle': 'var(--accent-subtle)',
+                'success': 'var(--success)',
+                'success-subtle': 'var(--success-subtle)',
+                'warning': 'var(--warning)',
+                'warning-subtle': 'var(--warning-subtle)',
+                'danger': 'var(--danger)',
+                'danger-subtle': 'var(--danger-subtle)',
+
                 // Brand Colors — E.M. Cayetano Hardware
                 brand: {
                     yellow: "#F6C90E",
@@ -30,32 +53,32 @@ export default {
                     'slate-blue-light': "#EEF2F7",
                 },
                 primary: {
-                    DEFAULT: "#252627",
-                    foreground: "#ffffff",
+                    DEFAULT: "var(--accent-primary)",
+                    foreground: "var(--text-inverse)",
                 },
                 secondary: {
-                    DEFAULT: "hsl(var(--secondary))",
-                    foreground: "hsl(var(--secondary-foreground))",
+                    DEFAULT: "var(--bg-muted)",
+                    foreground: "var(--text-secondary)",
                 },
                 destructive: {
-                    DEFAULT: "hsl(var(--destructive))",
-                    foreground: "hsl(var(--destructive-foreground))",
+                    DEFAULT: "var(--danger)",
+                    foreground: "var(--text-inverse)",
                 },
                 muted: {
-                    DEFAULT: "hsl(var(--muted))",
-                    foreground: "hsl(var(--muted-foreground))",
+                    DEFAULT: "var(--bg-muted)",
+                    foreground: "var(--text-muted)",
                 },
                 accent: {
-                    DEFAULT: "hsl(var(--accent))",
-                    foreground: "hsl(var(--accent-foreground))",
+                    DEFAULT: "var(--accent-primary)",
+                    foreground: "var(--text-inverse)",
                 },
                 popover: {
-                    DEFAULT: "hsl(var(--popover))",
-                    foreground: "hsl(var(--popover-foreground))",
+                    DEFAULT: "var(--bg-surface)",
+                    foreground: "var(--text-primary)",
                 },
                 card: {
-                    DEFAULT: "hsl(var(--card))",
-                    foreground: "hsl(var(--card-foreground))",
+                    DEFAULT: "var(--bg-surface)",
+                    foreground: "var(--text-primary)",
                 },
             },
             borderRadius: {

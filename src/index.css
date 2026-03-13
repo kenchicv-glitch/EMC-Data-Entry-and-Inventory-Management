@@ -18,6 +18,40 @@
   --color-brand-slate-blue: #334155;
   --color-brand-slate-blue-light: #F1F5F9;
 
+  /* Semantic Color Mappings for Tailwind v4 Utilities */
+  /* Short form: bg-surface, bg-subtle, etc. */
+  --color-base: var(--bg-base);
+  --color-surface: var(--bg-surface);
+  --color-subtle: var(--bg-subtle);
+  --color-muted: var(--bg-muted);
+
+  /* Double-prefix aliases: bg-bg-surface, bg-bg-subtle, etc. */
+  /* These are needed because many components use bg-bg-surface pattern */
+  --color-bg-base: var(--bg-base);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-bg-muted: var(--bg-muted);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-inverse: var(--text-inverse);
+
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+  --color-border-muted: var(--border-default);
+
+  --color-accent: var(--accent-primary);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+
   --shadow-bento: 0 4px 20px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
   --shadow-bento-hover: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
   --shadow-red: 0 4px 14px 0 rgba(238, 62, 62, 0.4);
@@ -25,6 +59,34 @@
 
 @layer base {
   :root {
+    --bg-base: #F8F9FA;
+    --bg-surface: #FFFFFF;
+    --bg-subtle: #F1F3F5;
+    --bg-muted: #E9ECEF;
+
+    --text-primary: #0D1117;
+    --text-secondary: #495057;
+    --text-muted: #868E96;
+    --text-inverse: #FFFFFF;
+
+    --border-default: #DEE2E6;
+    --border-strong: #ADB5BD;
+
+    --accent-primary: #1971C2;
+    --accent-hover: #1864AB;
+    --accent-subtle: #D0EBFF;
+
+    --success: #2F9E44;
+    --success-subtle: #D3F9D8;
+    --warning: #E67700;
+    --warning-subtle: #FFF3BF;
+    --danger: #C92A2A;
+    --danger-subtle: #FFE3E3;
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.10);
+
+    /* Legacy shadcn-style tokens for backward compatibility if needed */
     --foreground: 220 15% 5%;
     --card: 0 0% 100%;
     --card-foreground: 220 15% 5%;
@@ -45,6 +107,40 @@
     --ring: 220 5% 10%;
     --radius: 0.75rem;
   }
+
+  [data-theme="dark"] {
+    --bg-base: #0D1117;
+    --bg-surface: #161B22;
+    --bg-subtle: #1C2128;
+    --bg-muted: #21262D;
+
+    --text-primary: #E6EDF3;
+    --text-secondary: #9BA3AF;
+    --text-muted: #7E8691;
+    --text-inverse: #0D1117;
+
+    --border-default: #30363D;
+    --border-strong: #484F58;
+
+    --accent-primary: #388BFD;
+    --accent-hover: #58A6FF;
+    --accent-subtle: #0D2340;
+
+    --success: #3FB950;
+    --success-subtle: #0D2E18;
+    --warning: #D29922;
+    --warning-subtle: #2D1F00;
+    --danger: #F85149;
+    --danger-subtle: #2D0F0F;
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.30);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);
+
+    /* Update legacy tokens for dark mode if components use them */
+    --foreground: 220 10% 90%;
+    --border: 220 13% 20%;
+    --input: 220 13% 20%;
+  }
 }
 
 @layer base {
@@ -53,12 +149,12 @@
   }
 
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
+    background-color: var(--bg-base);
+    color: var(--text-primary);
     font-family: 'Roboto', 'Open Sans', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    @apply text-slate-900;
+    transition: background-color 0.2s, color 0.2s;
   }
 }
 
@@ -66,7 +162,16 @@
 
   /* Bento Card — the core UI building block */
   .bento-card {
-    @apply bg-white rounded-2xl border border-slate-200 shadow-bento transition-all duration-200 hover:shadow-bento-hover hover:border-slate-300;
+    background-color: var(--bg-surface);
+    border-radius: 1rem;
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s;
+  }
+
+  .bento-card:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--border-strong);
   }
 
   /* Sidebar nav item */
@@ -105,11 +210,39 @@
   }
 
   .modal-input {
-    @apply w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 transition-all focus:border-brand-red focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20;
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-default);
+    background-color: var(--bg-subtle);
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    transition: all 0.2s;
+  }
+
+  .modal-input:focus {
+    border-color: var(--accent-primary);
+    background-color: var(--bg-surface);
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent-subtle);
   }
 
   .modal-textarea {
-    @apply w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 transition-all focus:border-brand-red focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20;
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-default);
+    background-color: var(--bg-subtle);
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    transition: all 0.2s;
+  }
+
+  .modal-textarea:focus {
+    border-color: var(--accent-primary);
+    background-color: var(--bg-surface);
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent-subtle);
   }
 }
 
