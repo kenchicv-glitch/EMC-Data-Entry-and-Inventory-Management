@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { X, Loader2 } from 'lucide-react';
+import { useBranch } from '../../../shared/lib/BranchContext';
 import type { Supplier, SupplierInsert } from '../../../shared/types';
 
 const supplierSchema = z.object({
@@ -27,6 +28,7 @@ interface SupplierModalProps {
 }
 
 export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isLoading }: SupplierModalProps) {
+    const { activeBranchId } = useBranch();
     const { register, handleSubmit, reset, watch, getValues, formState: { errors } } = useForm<SupplierFormData>({
         resolver: zodResolver(supplierSchema),
         defaultValues: {
@@ -73,6 +75,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
             phone: data.phone || null,
             email: data.email || null,
             address: data.address || null,
+            branch_id: supplier?.branch_id || activeBranchId,
             ...({
                 supplier_tin: data.supplier_tin || null,
                 supplier_vat_registered: data.supplier_vat_registered,

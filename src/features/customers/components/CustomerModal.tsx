@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { X, Loader2, CreditCard, User, Phone, Mail, MapPin } from 'lucide-react';
+import { useBranch } from '../../../shared/lib/BranchContext';
 import type { Customer, CustomerInsert } from '../../../shared/types';
 
 const customerSchema = z.object({
@@ -26,6 +27,7 @@ interface CustomerModalProps {
 }
 
 export default function CustomerModal({ isOpen, onClose, onSubmit, customer, isLoading }: CustomerModalProps) {
+    const { activeBranchId } = useBranch();
     const { register, handleSubmit, reset, formState: { errors } } = useForm<CustomerFormData>({
         resolver: zodResolver(customerSchema),
         defaultValues: {
@@ -68,6 +70,7 @@ export default function CustomerModal({ isOpen, onClose, onSubmit, customer, isL
             address: data.address || null,
             credit_limit: data.credit_limit,
             is_active: data.is_active,
+            branch_id: customer?.branch_id || activeBranchId,
         };
         onSubmit(formattedData);
     };

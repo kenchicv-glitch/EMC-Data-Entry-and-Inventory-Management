@@ -133,7 +133,7 @@ export default function Suppliers() {
         if (editingSupplier) {
             await updateSupplier({ id: editingSupplier.id, updates: data });
         } else {
-            await createSupplier({ ...data, branch_id: activeBranchId });
+            await createSupplier(data);
         }
         setIsModalOpen(false);
     };

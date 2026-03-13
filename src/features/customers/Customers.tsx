@@ -192,7 +192,7 @@ export default function Customers() {
         if (editingCustomer) {
             await updateCustomer({ id: editingCustomer.id, updates: data });
         } else {
-            await createCustomer({ ...data, branch_id: activeBranchId });
+            await createCustomer(data);
         }
         setIsModalOpen(false);
     };
