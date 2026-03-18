@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import ProductModal from './components/ProductModal';
 import { encodePrice, isEncoded, decodePrice } from '../../shared/lib/priceCodes';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 
 interface Product {
     id: string;

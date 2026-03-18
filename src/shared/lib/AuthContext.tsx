@@ -1,18 +1,9 @@
-import React, { createContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import type { Session, User } from '@supabase/supabase-js';
 
-export interface AuthContextType {
-    session: Session | null;
-    user: User | null;
-    role: 'owner' | 'admin' | 'encoder' | null;
-    branchId: string | null;
-    displayName: string | null;
-    loading: boolean;
-    signOut: () => Promise<void>;
-}
-
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext } from './AuthContextExports';
+import type { AuthContextType } from './AuthContextExports';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [session, setSession] = useState<Session | null>(null);
@@ -102,7 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('emc-active-branch'); // Clear active branch on logout as per SOP
     };
 
-    const value = {
+    const value: AuthContextType = {
         session,
         user,
         role,

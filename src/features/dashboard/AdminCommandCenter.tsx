@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../shared/lib/supabase';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 import { startOfDay, endOfDay, format } from 'date-fns';
 import Calendar from '../../features/reports/components/Calendar';
 import {
@@ -140,6 +140,7 @@ export default function AdminCommandCenter() {
 
     useEffect(() => {
         fetchAllBranchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fetchAllBranchData]);
 
     const handleDateSelect = (date: Date) => {

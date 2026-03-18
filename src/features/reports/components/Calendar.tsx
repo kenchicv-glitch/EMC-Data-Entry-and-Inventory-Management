@@ -17,6 +17,7 @@ export default function Calendar({ selectedDate, onDateSelect, activeDates = [],
     });
 
     // Sync currentMonth when selectedDate changes (e.g. when modal opens with new date)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         const d = new Date(selectedDate);
         if (!isNaN(d.getTime())) {

@@ -1,13 +1,7 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { useState } from 'react';
 
-export type Workspace = 'systems' | 'bir' | 'admin' | null;
-
-interface WorkspaceContextType {
-    currentWorkspace: Workspace;
-    setWorkspace: (workspace: Workspace) => void;
-}
-
-const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
+import { WorkspaceContext } from './WorkspaceContextExports';
+import type { WorkspaceContextType, Workspace } from './WorkspaceContextExports';
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [currentWorkspace, setCurrentWorkspace] = useState<Workspace>(() => {
@@ -24,17 +18,15 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
     };
 
+    const contextValue: WorkspaceContextType = {
+        currentWorkspace,
+        setWorkspace
+    };
+
     return (
-        <WorkspaceContext.Provider value={{ currentWorkspace, setWorkspace }}>
+        <WorkspaceContext.Provider value={contextValue}>
             {children}
         </WorkspaceContext.Provider>
     );
 };
 
-export const useWorkspace = () => {
-    const context = useContext(WorkspaceContext);
-    if (context === undefined) {
-        throw new Error('useWorkspace must be used within a WorkspaceProvider');
-    }
-    return context;
-};

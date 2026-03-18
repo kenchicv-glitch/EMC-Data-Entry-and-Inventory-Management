@@ -1,21 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { useAuth } from '../hooks/useAuth';
 
-interface Branch {
-    id: string;
-    name: string;
-}
-
-interface BranchContextType {
-    branches: Branch[];
-    activeBranchId: string | null;
-    setActiveBranchId: (id: string | null) => void;
-    currentBranchName: string;
-    loading: boolean;
-}
-
-const BranchContext = createContext<BranchContextType | undefined>(undefined);
+import { BranchContext } from './BranchContextExports';
+import type { BranchContextType, Branch } from './BranchContextExports';
 
 export const BranchProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { role, branchId } = useAuth();
@@ -34,10 +22,11 @@ export const BranchProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     useEffect(() => {
         // Enforcers/Managers are locked to their profile branch
-        if (role !== 'owner' && branchId) {
+        if (role !== 'owner' && branchId && activeBranchId !== branchId) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setActiveBranchId(branchId);
         }
-    }, [role, branchId]);
+    }, [role, branchId, activeBranchId]);
 
     useEffect(() => {
         if (activeBranchId) {
@@ -47,17 +36,18 @@ export const BranchProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const currentBranchName = branches.find(b => b.id === (activeBranchId || branchId))?.name || 'Main Branch';
 
+    const contextValue: BranchContextType = {
+        branches,
+        activeBranchId,
+        setActiveBranchId,
+        currentBranchName,
+        loading
+    };
+
     return (
-        <BranchContext.Provider value={{ branches, activeBranchId, setActiveBranchId, currentBranchName, loading }}>
+        <BranchContext.Provider value={contextValue}>
             {children}
         </BranchContext.Provider>
     );
 };
 
-export const useBranch = () => {
-    const context = useContext(BranchContext);
-    if (context === undefined) {
-        throw new Error('useBranch must be used within a BranchProvider');
-    }
-    return context;
-};
