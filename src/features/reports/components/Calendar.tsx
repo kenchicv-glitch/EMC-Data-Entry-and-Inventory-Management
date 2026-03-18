@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays } from 'date-fns';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 
@@ -16,14 +16,15 @@ export default function Calendar({ selectedDate, onDateSelect, activeDates = [],
         return isNaN(d.getTime()) ? new Date() : d;
     });
 
-    // Sync currentMonth when selectedDate changes (e.g. when modal opens with new date)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    useEffect(() => {
+    const [prevSelectedDate, setPrevSelectedDate] = useState(selectedDate);
+
+    if (selectedDate !== prevSelectedDate) {
+        setPrevSelectedDate(selectedDate);
         const d = new Date(selectedDate);
         if (!isNaN(d.getTime())) {
             setCurrentMonth(startOfMonth(d));
         }
-    }, [selectedDate]);
+    }
 
     const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
     const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
