@@ -1,5 +1,11 @@
 # TODO.md
 
-> Pending tasks outside of current phase execution
+## Infrastructure
+- [ ] Create `stock_transfers` table schema
+- [ ] Create `notifications` table schema
+- [ ] Set up Supabase real-time triggers
 
-- [ ] Complete Phase 1 Planning
+## UI
+- [ ] Notification modal component
+- [ ] "Request Stock" modal in Inventory
+- [ ] Transfers dashboard (Admin/Owner)

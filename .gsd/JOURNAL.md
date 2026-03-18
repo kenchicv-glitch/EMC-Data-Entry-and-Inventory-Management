@@ -1,6 +1,6 @@
 # JOURNAL.md
 
-> Project log and observations
-
 ## 2026-03-18
-- Initialized core refactoring and codebase stabilization project.
+- Project initialized for Inventory Coordination.
+- Defined the "Request → Approve → Ship → Receive" workflow.
+- Identified the Layout Bell icon as the integration point for notifications.
