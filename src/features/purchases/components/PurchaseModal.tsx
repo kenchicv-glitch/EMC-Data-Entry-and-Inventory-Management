@@ -16,6 +16,7 @@ interface Product {
     stock_available: number;
     buying_price: number;
     price?: number;
+    unit?: string;
 }
 
 interface PurchaseItem {
@@ -25,6 +26,7 @@ interface PurchaseItem {
     total_price: number;
     name?: string;
     stock_available?: number;
+    unit?: string;
     searchQuery?: string;
     isSearchOpen?: boolean;
     highlightedIndex?: number;
@@ -202,7 +204,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
     const fetchProducts = useCallback(async () => {
         let query = supabase
             .from('products')
-            .select('id, name, sku, stock_available, buying_price')
+            .select('id, name, sku, stock_available, buying_price, unit')
             .order('name');
 
         if (activeBranchId) {
@@ -388,6 +390,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
             product_id: product.id,
             name: product.name,
             stock_available: product.stock_available,
+            unit: product.unit,
             unit_price: product.buying_price || 0,
             total_price: (newItems[index].quantity || 1) * (product.buying_price || 0),
             searchQuery: product.name,
@@ -419,6 +422,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                     searchQuery: product.name,
                     isSearchOpen: false,
                     quantity: 1,
+                    unit: product.unit,
                     unit_price: product.buying_price || 0,
                     total_price: product.buying_price || 0
                 }
@@ -995,7 +999,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                                             <input
                                                 ref={el => { quantityInputRefs.current[index] = el; }}
                                                 type="number"
-                                                step="0.25"
+                                                step={item.unit?.toLowerCase() === 'elf' || item.name?.toLowerCase()?.includes('elf') ? '0.25' : '1'}
                                                 min="0"
                                                 className="w-full bg-bg-surface border border-border-default rounded-lg px-2 py-1.5 text-xs font-data focus:border-brand-red focus:ring-2 focus:ring-brand-red/10 outline-none text-text-primary shadow-inner h-[32px]"
                                                 value={item.quantity}
