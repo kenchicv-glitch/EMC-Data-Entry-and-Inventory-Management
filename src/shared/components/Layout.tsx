@@ -62,9 +62,16 @@ interface SidebarProps {
     currentWorkspace: Workspace;
     handleSwitchWorkspace: () => void;
     displayName: string | null;
+    branches: Branch[];
+    activeBranchId: string | null;
+    setActiveBranchId: (id: string) => void;
 }
 
-const Sidebar = ({ role, userEmail, userInitials, signOut, setIsSidebarOpen, openMenus, toggleMenu, currentWorkspace, handleSwitchWorkspace, displayName }: SidebarProps) => {
+const Sidebar = ({ 
+    role, userEmail, userInitials, signOut, setIsSidebarOpen, openMenus, 
+    toggleMenu, currentWorkspace, handleSwitchWorkspace, displayName,
+    branches, activeBranchId, setActiveBranchId
+}: SidebarProps) => {
     const { canAccessMaster } = usePermissions();
     
     return (
@@ -82,6 +89,28 @@ const Sidebar = ({ role, userEmail, userInitials, signOut, setIsSidebarOpen, ope
                 </p>
             </div>
         </div>
+
+        {/* Mobile Branch Selector */}
+        {canAccessMaster && (
+            <div className="px-6 py-4 border-b border-white/5 lg:hidden">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Switch Branch</p>
+                <div className="relative">
+                    <select 
+                        value={activeBranchId || ''} 
+                        onChange={(e) => {
+                            setActiveBranchId(e.target.value);
+                        }}
+                        className="w-full appearance-none bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm font-bold text-white outline-none cursor-pointer focus:ring-2 focus:ring-brand-red/20 transition-all"
+                    >
+                        <option value="" disabled className="bg-brand-charcoal">Select Branch</option>
+                        {branches.map((b: Branch) => (
+                            <option key={b.id} value={b.id} className="bg-brand-charcoal text-white">{b.name}</option>
+                        ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                </div>
+            </div>
+        )}
 
         <nav className="flex-1 px-4 py-6 space-y-6 overflow-y-auto custom-scrollbar">
             {currentWorkspace === 'systems' && (
@@ -354,7 +383,10 @@ export default function Layout() {
         toggleMenu,
         currentWorkspace,
         handleSwitchWorkspace,
-        displayName
+        displayName,
+        branches,
+        activeBranchId,
+        setActiveBranchId
     };
 
     return (
