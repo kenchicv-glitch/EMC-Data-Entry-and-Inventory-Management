@@ -1,0 +1,20 @@
+import React, { useState, Suspense } from 'react';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import { useWorkspace } from '../hooks/useWorkspace';
+import {
+
+import logo from '../../assets/brand-logo.png';
+import ThemeToggle from './ThemeToggle';
+import type { Workspace } from '../lib/WorkspaceContextExports';
+import type { Branch } from '../lib/BranchContextExports';
+import { useBranch } from '../hooks/useBranch';
+import { usePermissions } from '../hooks/usePermissions';
+import { useNotifications } from '../hooks/useNotifications';
+import NotificationModal from './NotificationModal';
+import { useModal } from '../context/ModalContext';
+import SalesModal from '../../features/sales/components/SalesModal';
+import PurchaseModal from '../../features/purchases/components/PurchaseModal';
+
+interface SidebarLinkProps {
+    to: string;

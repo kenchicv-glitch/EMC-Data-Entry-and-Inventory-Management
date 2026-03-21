@@ -7,7 +7,7 @@ import {
     RotateCcw, LogOut, Bell, ClipboardList,
     ChevronDown, Menu, X, Tag, Wallet,
     Calendar, Settings as SettingsIcon, LineChart,
-    Users, ArrowLeft, ArrowRightLeft, FileBarChart, Calculator, Building2
+    Users, ArrowLeft, ArrowRightLeft, FileBarChart, Calculator, Building2, BookOpen
 } from 'lucide-react';
 import logo from '../../assets/brand-logo.png';
 import ThemeToggle from './ThemeToggle';
@@ -169,6 +169,21 @@ const Sidebar = ({
                         )}
                     </div>
 
+                    <div className="space-y-1">
+                        <button
+                            onClick={() => toggleMenu('instructions')}
+                            className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors group"
+                        >
+                            <span>Instructions</span>
+                            <ChevronDown size={14} className={`transition-transform duration-300 ${openMenus.instructions ? 'rotate-180' : ''}`} />
+                        </button>
+                        {openMenus.instructions && (
+                            <div className="space-y-1 mt-1 animate-slide-up">
+                                <SidebarLink to="/guide" label="Guide" icon={BookOpen} onClick={() => setIsSidebarOpen(false)} />
+                            </div>
+                        )}
+                    </div>
+
                 </>
             )}
 
@@ -253,7 +268,8 @@ export default function Layout() {
         overview: true,
         externals: true,
         financials: true,
-        admin: true
+        admin: true,
+        instructions: true
     });
 
     React.useEffect(() => {

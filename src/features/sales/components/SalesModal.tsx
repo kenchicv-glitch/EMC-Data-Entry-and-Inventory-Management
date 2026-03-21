@@ -123,21 +123,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
-    const [hasChanged, setHasChanged] = useState(false);
-
-    useEffect(() => {
-        if (isOpen) setHasChanged(false);
-    }, [isOpen]);
-
-    const handleSafeClose = useCallback(() => {
-        if (hasChanged) {
-            if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
-                onClose();
-            }
-        } else {
-            onClose();
-        }
-    }, [hasChanged, onClose]);
+    // Disruptive close logic and draft state removed
 
 
     const dropdownRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -145,7 +131,6 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     const quantityInputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const customerSearchInputRef = useRef<HTMLInputElement>(null);
     const saveButtonRef = useRef<HTMLButtonElement>(null);
-    const draftOfferedRef = useRef(false);
 
     // Keyboard navigation for line items
     const completedItems = items.filter(it => it.product_id);
@@ -351,75 +336,19 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             // Only close if no dropdown is open
             const anyDropdownOpen = items.some(it => it.isSearchOpen) || isCustomerSearchOpen;
             if (!anyDropdownOpen) {
-                handleSafeClose();
+                onClose();
             }
         };
         window.addEventListener('close-modal', handleCloseModal);
         
-        // Prevent accidental browser back/refresh
-        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (hasChanged) {
-                e.preventDefault();
-                e.returnValue = '';
-            }
-        };
-        window.addEventListener('beforeunload', handleBeforeUnload);
+        // Removed beforeunload listener as it disrupts workflow
 
         return () => {
             window.removeEventListener('close-modal', handleCloseModal);
-            window.removeEventListener('beforeunload', handleBeforeUnload);
         };
-    }, [isOpen, items, isCustomerSearchOpen, handleSafeClose, hasChanged]);
+    }, [isOpen, items, isCustomerSearchOpen, onClose]);
 
-    // Draft Persistence
-    const DRAFT_KEY = `sales_draft_${activeBranchId}`;
-    
-    useEffect(() => {
-        if (isOpen && !editData) {
-            if (draftOfferedRef.current) return;
-            draftOfferedRef.current = true;
-            const draft = localStorage.getItem(DRAFT_KEY);
-            if (draft) {
-                try {
-                    const parsed = JSON.parse(draft);
-                    if (window.confirm('You have a saved draft for this branch. Would you like to restore it?')) {
-                        setCustomerName(parsed.customerName || '');
-                        setCustomerSearchQuery(parsed.customerName || '');
-                        setItems(parsed.items || []);
-                        setPaymentMode(parsed.paymentMode || 'cash');
-                        setFulfillmentStatus(parsed.fulfillmentStatus || 'pickup');
-                        setVatClassification(parsed.vatClassification || 'vatable');
-                        setIsDiscountEnabled(parsed.isDiscountEnabled || false);
-                        setTransactionLabel(parsed.transactionLabel || '');
-                        setHasChanged(true);
-                    } else {
-                        localStorage.removeItem(DRAFT_KEY);
-                    }
-                } catch (e) {
-                    console.error('Failed to parse draft', e);
-                }
-            }
-        }
-        if (!isOpen) {
-            draftOfferedRef.current = false;
-        }
-    }, [isOpen, editData, DRAFT_KEY]);
-
-
-    useEffect(() => {
-        if (isOpen && !editData && hasChanged) {
-            const draft = {
-                customerName,
-                items: items.map(it => ({ ...it, isSearchOpen: false })),
-                paymentMode,
-                fulfillmentStatus,
-                vatClassification,
-                isDiscountEnabled,
-                transactionLabel
-            };
-            localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-        }
-    }, [isOpen, editData, hasChanged, customerName, items, paymentMode, fulfillmentStatus, vatClassification, isDiscountEnabled, transactionLabel, DRAFT_KEY]);
+    // Draft persistence and restoration logic removed for workflow efficiency
 
 
     useEffect(() => {
@@ -435,7 +364,6 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
 
 
     const handleInvoiceChange = (val: string) => {
-        setHasChanged(true);
         // Strip everything but numbers
         const num = val.replace(/\D/g, '').slice(0, 6);
         setRawInvoiceNum(num);
@@ -585,7 +513,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             }
 
             setSuccess(true);
-            localStorage.removeItem(DRAFT_KEY);
+            
             toast.success('Sale saved', { duration: 2000 });
             setTimeout(() => {
                 onSuccess(insertedData as unknown as unknown[]);
@@ -637,7 +565,6 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     }, [grandTotal, deliveryFee, showDeliveryPrompt, handleSubmit]);
 
     const handleAddItem = useCallback(() => {
-        setHasChanged(true);
         setItems(prev => [...prev, {
             product_id: '',
             quantity: 1,
@@ -659,7 +586,6 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     }, [items.length]);
 
     const handleRemoveItem = useCallback((index: number) => {
-        setHasChanged(true);
         setItems(prev => {
             if (prev.length === 1) return prev;
             return prev.filter((_, i) => i !== index);
@@ -672,8 +598,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             const item = { ...next[index], [field]: value };
 
             if (field === 'quantity' || field === 'unit_price' || field === 'searchQuery') {
-                setHasChanged(true);
-                const q = field === 'quantity' ? (value as number) : item.quantity;
+                        const q = field === 'quantity' ? (value as number) : item.quantity;
                 const u = field === 'unit_price' ? (value as number) : item.unit_price;
                 item.total_price = q * u;
             }
@@ -828,7 +753,6 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             highlightedIndex: 0
         };
         setItems(newItems);
-        setHasChanged(true);
 
         // Auto-focus quantity input after selection
         setTimeout(() => {
@@ -860,7 +784,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                         <div className="w-8 h-8 bg-brand-red rounded-lg flex items-center justify-center text-white"><ShoppingCart size={16} /></div>
                         <h2 className="text-base font-bold text-white uppercase tracking-wider">{editData ? 'Edit Sale' : 'New Sale'}</h2>
                     </div>
-                    <button onClick={handleSafeClose} className="text-slate-400 hover:text-white transition-colors"><X size={18} /></button>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors"><X size={18} /></button>
                 </div>
 
 
@@ -928,7 +852,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                 <select 
                                     className="w-full bg-surface border border-border-default rounded-xl px-2 py-1.5 text-xs font-black text-text-primary outline-none focus:ring-2 focus:ring-brand-red/10 appearance-none cursor-pointer uppercase"
                                     value={transactionLabel}
-                                    onChange={(e) => { setTransactionLabel(e.target.value); setHasChanged(true); }}
+                                    onChange={(e) => { setTransactionLabel(e.target.value);  }}
                                 >
 
                                     <option value="">NO LABEL</option>
@@ -953,7 +877,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                             setCustomerName(e.target.value);
                                             setIsCustomerSearchOpen(true);
                                             setCustomerHighlightedIndex(0);
-                                            setHasChanged(true);
+                                            
                                             if (!e.target.value) setCustomerId(null);
                                         }}
                                         onFocus={(e) => {
@@ -1031,7 +955,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
 
                              <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
                                 <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><Truck size={12} /> Fulfillment</label>
-                                <select className="w-full bg-surface border border-border-default rounded-xl px-2 py-1.5 text-xs outline-none shadow-sm cursor-pointer font-bold text-text-primary h-[32px]" value={fulfillmentStatus} onChange={(e) => { setFulfillmentStatus(e.target.value as 'pickup' | 'delivered' | 'out'); setHasChanged(true); }}>
+                                <select className="w-full bg-surface border border-border-default rounded-xl px-2 py-1.5 text-xs outline-none shadow-sm cursor-pointer font-bold text-text-primary h-[32px]" value={fulfillmentStatus} onChange={(e) => { setFulfillmentStatus(e.target.value as 'pickup' | 'delivered' | 'out');  }}>
                                     <option value="pickup">Store Pickup</option>
                                     <option value="out">Product Out</option>
                                     <option value="delivered">Delivered</option>
@@ -1071,13 +995,13 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                     <select
                                         className={`flex-1 py-1 px-1 rounded-lg border text-[8px] font-black tracking-widest transition-all outline-none ${vatClassification === 'vatable' ? 'bg-slate-800 text-white border-slate-800' : 'bg-surface text-text-muted border-border-default'}`}
                                         value={vatClassification}
-                                        onChange={(e) => { setVatClassification(e.target.value as VatClassification); setHasChanged(true); }}
+                                        onChange={(e) => { setVatClassification(e.target.value as VatClassification);  }}
                                     >
                                         <option value="vatable">VAT</option>
                                         <option value="exempt">EXE</option>
                                         <option value="zero_rated">ZERO</option>
                                     </select>
-                                    <button type="button" onClick={() => { setIsDiscountEnabled(!isDiscountEnabled); setHasChanged(true); }} className={`flex-1 py-1 rounded-lg border text-[8px] font-black tracking-widest transition-all ${isDiscountEnabled ? 'bg-brand-orange text-white border-brand-orange' : 'bg-surface text-text-muted border-border-default'}`}>DSC</button>
+                                    <button type="button" onClick={() => { setIsDiscountEnabled(!isDiscountEnabled);  }} className={`flex-1 py-1 rounded-lg border text-[8px] font-black tracking-widest transition-all ${isDiscountEnabled ? 'bg-brand-orange text-white border-brand-orange' : 'bg-surface text-text-muted border-border-default'}`}>DSC</button>
                                 </div>
 
                             </div>

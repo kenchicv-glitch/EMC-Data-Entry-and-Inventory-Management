@@ -33,6 +33,7 @@ const AdminCommandCenter = lazy(() => import('./features/dashboard/AdminCommandC
 const BranchInventory = lazy(() => import('./features/inventory/BranchInventory'));
 const BranchInventoryDetail = lazy(() => import('./features/inventory/BranchInventoryDetail'));
 const Transfers = lazy(() => import('./features/transfers/Transfers'));
+const GuidePage = lazy(() => import('./features/guide/pages/GuidePage'));
 
 import { useAuth } from './shared/hooks/useAuth';
 import { usePermissions } from './shared/hooks/usePermissions';
@@ -90,6 +91,7 @@ function AppRoutes() {
                 <Route path="/inventory-summary" element={<DailyInventorySummary />} />
                 <Route path="/profit" element={<ProfitAnalysis />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/guide" element={<GuidePage />} />
             </Route>
 
             <Route path="/home" element={<EncoderGuard><Home /></EncoderGuard>} />
