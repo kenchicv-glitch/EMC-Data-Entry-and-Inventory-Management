@@ -9,7 +9,7 @@ import {
     Clock, Calendar, TrendingUp,
     ArrowRight, User
 } from 'lucide-react';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 import SupplierModal from './components/SupplierModal';
 import type { Supplier, SupplierInsert } from '../../shared/types';
 import { format } from 'date-fns';
@@ -238,11 +238,11 @@ export default function Suppliers() {
                                             <p className="text-sm font-black text-text-primary uppercase tracking-tight truncate">{supplier.name}</p>
                                             <div className="flex items-center gap-3 mt-0.5">
                                                 <span className="text-[10px] font-bold text-text-muted font-data">{supplier.phone || 'No phone'}</span>
-                                                {(supplier as any).supplier_tin && (
-                                                    <span className="text-[8px] font-bold text-text-muted/50 font-data">TIN: {(supplier as any).supplier_tin}</span>
+                                                {supplier.supplier_tin && (
+                                                    <span className="text-[8px] font-bold text-text-muted/50 font-data">TIN: {supplier.supplier_tin}</span>
                                                 )}
-                                                <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full ${(supplier as any).supplier_vat_registered ? 'bg-emerald-500/10 text-emerald-500' : 'bg-bg-base text-text-muted opacity-50'}`}>
-                                                    {(supplier as any).supplier_vat_registered ? 'VAT' : 'NON-VAT'}
+                                                <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full ${supplier.supplier_vat_registered ? 'bg-emerald-500/10 text-emerald-500' : 'bg-bg-base text-text-muted opacity-50'}`}>
+                                                    {supplier.supplier_vat_registered ? 'VAT' : 'NON-VAT'}
                                                 </span>
                                             </div>
                                         </div>
@@ -270,11 +270,11 @@ export default function Suppliers() {
                                     <div>
                                         <h2 className="text-2xl font-black text-text-primary uppercase tracking-tight">{selectedSupplier.name}</h2>
                                         <div className="flex items-center gap-3 mt-1">
-                                            <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${(selectedSupplier as any).supplier_vat_registered ? 'bg-emerald-500/10 text-emerald-500' : 'bg-bg-base text-text-muted opacity-50'}`}>
-                                                {(selectedSupplier as any).supplier_vat_registered ? 'VAT Registered' : 'Non-VAT Vendor'}
+                                            <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${selectedSupplier.supplier_vat_registered ? 'bg-emerald-500/10 text-emerald-500' : 'bg-bg-base text-text-muted opacity-50'}`}>
+                                                {selectedSupplier.supplier_vat_registered ? 'VAT Registered' : 'Non-VAT Vendor'}
                                             </span>
-                                            {(selectedSupplier as any).supplier_tin && (
-                                                <span className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-red font-data">TIN: {(selectedSupplier as any).supplier_tin}</span>
+                                            {selectedSupplier.supplier_tin && (
+                                                <span className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-red font-data">TIN: {selectedSupplier.supplier_tin}</span>
                                             )}
                                             <span className="text-[10px] font-bold text-text-muted opacity-50 font-data">Onboarded {format(new Date(selectedSupplier.created_at), 'MMM d, yyyy')}</span>
                                         </div>

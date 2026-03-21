@@ -1,5 +1,5 @@
 export interface Product {
-    id: string;
+    id?: string;
     sku: string;
     name: string;
     description: string | null;
@@ -12,7 +12,9 @@ export interface Product {
     supplier_selling_price: number | null;
     low_stock_threshold: number | null;
     supplier_id: string | null;
-    created_at: string;
+    unit: string | null;
+    branch_id?: string;
+    created_at?: string;
 }
 
 export interface StockMovement {

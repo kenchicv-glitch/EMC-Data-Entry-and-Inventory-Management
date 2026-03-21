@@ -2,6 +2,7 @@ import type { Product } from '../../inventory/types/product';
 
 export interface Sale {
     id: string;
+    transaction_label: string | null;
     product_id: string;
     quantity: number;
     unit_price: number;
@@ -19,7 +20,10 @@ export interface Sale {
     fulfillment_status: 'pickup' | 'delivered' | 'out' | null;
     payment_mode: string | null;
     is_os: boolean | null;
+    or_number: string | null;
+    branch_id: string;
     edited_at: string | null;
+    invoice_type: 'A' | 'B' | null;
     products?: Pick<Product, 'name' | 'brand'>;
 }
 
@@ -32,11 +36,15 @@ export interface GroupedSale {
     items: Sale[];
     is_os: boolean;
     edited_at: string | null;
+    invoice_type: 'A' | 'B';
+    transaction_label: string | null;
+    full_name: string;
     total_base: number;
     total_vat: number;
     total_discount: number;
     delivery_fee: number;
     grand_total: number;
+    customer_id: string | null;
 }
 
 export interface CustomerRefund {
@@ -51,6 +59,7 @@ export interface CustomerRefund {
     reason: string | null;
     date: string;
     invoice_number: string | null;
+    branch_id: string;
     user_id: string | null;
     products?: Pick<Product, 'name'>;
 }

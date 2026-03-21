@@ -1,56 +1,14 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../../shared/lib/supabase';
+import { useUsers } from './hooks/useUsers';
 import { UserCog, Users } from 'lucide-react';
 import { useAuth } from '../../shared/hooks/useAuth';
 
-interface Profile {
-    id: string;
-    full_name: string;
-    role: 'admin' | 'encoder';
-    updated_at: string;
-}
-
 export default function UsersPage() {
     const { role } = useAuth();
-    const [profiles, setProfiles] = useState<Profile[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    const fetchProfiles = async () => {
-        setLoading(true);
-        const { data, error } = await supabase.from('profiles').select('*').order('full_name');
-        if (error) {
-            console.error('Error fetching profiles:', error);
-            setProfiles([]);
-        } else {
-            setProfiles(data as Profile[] || []);
-        }
-        setLoading(false);
-    };
-
-    useEffect(() => {
-        let mounted = true;
-        const loadProfiles = async () => {
-            setLoading(true);
-            const { data, error } = await supabase.from('profiles').select('*').order('full_name');
-            if (mounted) {
-                if (error) {
-                    console.error('Error fetching profiles:', error);
-                    setProfiles([]);
-                } else {
-                    setProfiles(data as Profile[] || []);
-                }
-                setLoading(false);
-            }
-        };
-        loadProfiles();
-        return () => { mounted = false; };
-    }, []);
+    const { users: profiles, isLoading: loading, updateRole } = useUsers();
 
     const toggleRole = async (id: string, currentRole: 'admin' | 'encoder') => {
         const newRole = currentRole === 'admin' ? 'encoder' : 'admin';
-        const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', id);
-        if (error) alert('Error updating role: ' + error.message);
-        else fetchProfiles();
+        await updateRole({ id, role: newRole });
     };
 
     return (

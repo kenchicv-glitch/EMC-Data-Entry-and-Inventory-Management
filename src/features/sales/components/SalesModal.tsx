@@ -6,11 +6,13 @@ import { customerService } from '../../customers/services/customerService';
 import { encodePrice } from '../../../shared/lib/priceCodes';
 import { useAudit } from '../../../shared/hooks/useAudit';
 import { useKeyboardNav } from '../../../shared/hooks/useKeyboardNav';
-import { computeOutputVat, type VatClassification } from '../../../lib/vatUtils';
+import { computeOutputVat, type VatClassification } from '../../../shared/lib/vatUtils';
 import type { Customer } from '../../customers/types/customer';
-import { useBranch } from '../../../shared/lib/BranchContext';
+import { useBranch } from '../../../shared/hooks/useBranch';
 import { toast } from 'sonner';
 import { isSmartMatch } from '../../../shared/lib/searchUtils';
+import { sanitizeString } from '../../../shared/lib/sanitize';
+
 
 interface Product {
     id: string;
@@ -20,9 +22,10 @@ interface Product {
     brand?: string;
     description?: string;
     buying_price?: number;
+    unit?: string;
 }
 
-interface OrderItem {
+export interface OrderItem {
     product_id: string;
     quantity: number;
     unit_price: number;
@@ -30,6 +33,7 @@ interface OrderItem {
     name?: string;
     stock_available?: number;
     brand?: string;
+    unit?: string;
     searchQuery?: string;
     isSearchOpen?: boolean;
     highlightedIndex?: number;
@@ -41,7 +45,7 @@ interface OrderItem {
     };
 }
 
-interface SalesModalProps {
+export interface SalesModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: (newSales?: unknown[]) => void;
@@ -53,10 +57,14 @@ interface SalesModalProps {
         items: OrderItem[];
         isVatEnabled: boolean;
         isDiscountEnabled: boolean;
-        is_os?: boolean;
+        isOs?: boolean;
         date?: string;
-        delivery_fee?: number;
-        customer_id?: string | null;
+        deliveryFee?: number;
+        customerId?: string | null;
+        vatClassification?: VatClassification;
+        orNumber?: string;
+        invoiceType?: 'A' | 'B';
+        transactionLabel?: string;
     };
 }
 
@@ -115,12 +123,29 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [hasChanged, setHasChanged] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) setHasChanged(false);
+    }, [isOpen]);
+
+    const handleSafeClose = useCallback(() => {
+        if (hasChanged) {
+            if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
+                onClose();
+            }
+        } else {
+            onClose();
+        }
+    }, [hasChanged, onClose]);
+
 
     const dropdownRefs = useRef<(HTMLDivElement | null)[]>([]);
     const searchInputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const quantityInputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const customerSearchInputRef = useRef<HTMLInputElement>(null);
     const saveButtonRef = useRef<HTMLButtonElement>(null);
+    const draftOfferedRef = useRef(false);
 
     // Keyboard navigation for line items
     const completedItems = items.filter(it => it.product_id);
@@ -181,7 +206,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     const fetchProducts = useCallback(async () => {
         const query = supabase
             .from('products')
-            .select('id, name, stock_available, selling_price, brand, description, buying_price')
+            .select('id, name, stock_available, selling_price, brand, description, buying_price, unit')
             .order('name');
         
         if (activeBranchId) {
@@ -192,7 +217,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
 
         if (error) console.error('Error fetching products:', error);
         else setProducts(data || []);
-    }, []);
+    }, [activeBranchId]);
 
     const fetchCustomers = useCallback(async () => {
         try {
@@ -264,15 +289,15 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                 setPaymentMode(editData.paymentMode || 'cash');
                 setItems(editData.items.map(item => ({ ...item, searchQuery: item.name || '', isSearchOpen: false })));
                 setIsDiscountEnabled(editData.isDiscountEnabled);
-                setVatClassification((editData as any).vat_classification || (editData.isVatEnabled ? 'vatable' : 'exempt'));
-                setOrNumber((editData as any).or_number || '');
-                setIsOs(editData.is_os || false);
-                setInvoiceType(((editData as any).invoice_type as 'A' | 'B') || 'A');
+                setVatClassification(editData.vatClassification || (editData.isVatEnabled ? 'vatable' : 'exempt'));
+                setOrNumber(editData.orNumber || '');
+                setIsOs(editData.isOs || false);
+                setInvoiceType((editData.invoiceType as 'A' | 'B') || 'A');
                 setOriginalDate(editData.date || null);
                 setDeliveryFee(0); // Reset fee so it's re-added via prompt
-                setCustomerId(editData.customer_id || null);
+                setCustomerId(editData.customerId || null);
                 setCustomerSearchQuery(editData.customerName || '');
-                setTransactionLabel((editData as any).transaction_label || '');
+                setTransactionLabel(editData.transactionLabel || '');
             } else {
                 setCustomerName('');
                 setFulfillmentStatus('pickup');
@@ -317,7 +342,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
         return () => {
             document.body.classList.remove('modal-open');
         };
-    }, [isOpen, editData, fetchProducts]);
+    }, [isOpen, editData, fetchProducts, fetchCustomers, resetNav]);
 
     // Listen for global Escape to close modal
     useEffect(() => {
@@ -326,12 +351,76 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             // Only close if no dropdown is open
             const anyDropdownOpen = items.some(it => it.isSearchOpen) || isCustomerSearchOpen;
             if (!anyDropdownOpen) {
-                onClose();
+                handleSafeClose();
             }
         };
         window.addEventListener('close-modal', handleCloseModal);
-        return () => window.removeEventListener('close-modal', handleCloseModal);
-    }, [isOpen, items, isCustomerSearchOpen, onClose]);
+        
+        // Prevent accidental browser back/refresh
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (hasChanged) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            window.removeEventListener('close-modal', handleCloseModal);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [isOpen, items, isCustomerSearchOpen, handleSafeClose, hasChanged]);
+
+    // Draft Persistence
+    const DRAFT_KEY = `sales_draft_${activeBranchId}`;
+    
+    useEffect(() => {
+        if (isOpen && !editData) {
+            if (draftOfferedRef.current) return;
+            draftOfferedRef.current = true;
+            const draft = localStorage.getItem(DRAFT_KEY);
+            if (draft) {
+                try {
+                    const parsed = JSON.parse(draft);
+                    if (window.confirm('You have a saved draft for this branch. Would you like to restore it?')) {
+                        setCustomerName(parsed.customerName || '');
+                        setCustomerSearchQuery(parsed.customerName || '');
+                        setItems(parsed.items || []);
+                        setPaymentMode(parsed.paymentMode || 'cash');
+                        setFulfillmentStatus(parsed.fulfillmentStatus || 'pickup');
+                        setVatClassification(parsed.vatClassification || 'vatable');
+                        setIsDiscountEnabled(parsed.isDiscountEnabled || false);
+                        setTransactionLabel(parsed.transactionLabel || '');
+                        setHasChanged(true);
+                    } else {
+                        localStorage.removeItem(DRAFT_KEY);
+                    }
+                } catch (e) {
+                    console.error('Failed to parse draft', e);
+                }
+            }
+        }
+        if (!isOpen) {
+            draftOfferedRef.current = false;
+        }
+    }, [isOpen, editData, DRAFT_KEY]);
+
+
+    useEffect(() => {
+        if (isOpen && !editData && hasChanged) {
+            const draft = {
+                customerName,
+                items: items.map(it => ({ ...it, isSearchOpen: false })),
+                paymentMode,
+                fulfillmentStatus,
+                vatClassification,
+                isDiscountEnabled,
+                transactionLabel
+            };
+            localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        }
+    }, [isOpen, editData, hasChanged, customerName, items, paymentMode, fulfillmentStatus, vatClassification, isDiscountEnabled, transactionLabel, DRAFT_KEY]);
+
 
     useEffect(() => {
         if (isOpen && !editData) {
@@ -346,6 +435,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
 
 
     const handleInvoiceChange = (val: string) => {
+        setHasChanged(true);
         // Strip everything but numbers
         const num = val.replace(/\D/g, '').slice(0, 6);
         setRawInvoiceNum(num);
@@ -354,6 +444,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
         setInvoiceNumber(newInvoice);
         setOrNumber(newInvoice);
     };
+
 
     const handleInvoiceBlur = () => {
         // Apply padding when focus is lost
@@ -390,22 +481,52 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
 
         try {
             if (!invoiceNumber.trim()) throw new Error('Please enter an invoice number');
-            if (orNumber.trim()) {
+            const sanitizedOrNumber = sanitizeString(orNumber);
+            if (sanitizedOrNumber) {
                 const { data: duplicateOr } = await supabase
                     .from('sales')
                     .select('or_number')
-                    .eq('or_number', orNumber.trim())
+                    .eq('or_number', sanitizedOrNumber)
                     .maybeSingle();
 
-                if (duplicateOr && (!editData || (editData as any).or_number !== orNumber.trim())) {
-                    throw new Error(`Duplicate OR Number detected: ${orNumber}. Please check or enter a new one.`);
+                if (duplicateOr && (!editData || editData.orNumber !== sanitizedOrNumber)) {
+                    throw new Error(`Duplicate OR Number detected: ${sanitizedOrNumber}. Please check or enter a new one.`);
                 }
             }
-            if (!orNumber.trim()) throw new Error('OR Number is required for BIR compliance');
+            if (!sanitizedOrNumber) throw new Error('OR Number is required for BIR compliance');
             if (items.some(item => !item.product_id)) throw new Error('Please select a product for all rows');
             if (items.some(item => item.quantity <= 0)) throw new Error('Quantity must be greater than 0');
 
             const { data: { user } } = await supabase.auth.getUser();
+
+            // Handle New Customer Creation
+            const currentCustomerName = sanitizeString(customerName);
+            let currentCustomerId = customerId;
+
+
+            if (currentCustomerName && !currentCustomerId) {
+                // Double check if it exists but wasn't selected (case-insensitive)
+                const existingCustomer = customers.find(c => c.name.toLowerCase() === currentCustomerName.toLowerCase());
+                if (existingCustomer) {
+                    currentCustomerId = existingCustomer.id;
+                } else {
+                    // Create new customer
+                    const { data: newCustomer, error: customerError } = await supabase
+                        .from('customers')
+                        .insert({
+                            name: currentCustomerName,
+                            branch_id: activeBranchId
+                        })
+                        .select()
+                        .single();
+
+                    if (customerError) throw customerError;
+                    currentCustomerId = newCustomer.id;
+                    setCustomerId(currentCustomerId);
+                    // Refresh customers list background
+                    fetchCustomers();
+                }
+            }
 
             if (editData) {
                 const { error: delError } = await supabase.from('sales').delete().eq('invoice_number', editData.invoiceNumber);
@@ -427,8 +548,8 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                     unit_price: item.unit_price,
                     total_price: item.total_price,
                     invoice_number: invoiceNumber,
-                    customer_name: customerName,
-                    customer_id: customerId,
+                    customer_name: currentCustomerName,
+                    customer_id: currentCustomerId,
                     fulfillment_status: fulfillmentStatus,
                     payment_mode: paymentMode,
                     user_id: user?.id,
@@ -439,13 +560,14 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                     is_os: isOs,
                     delivery_fee: deliveryFee,
                     vat_classification: currentVatClassification,
-                    or_number: orNumber,
+                    or_number: sanitizedOrNumber,
                     invoice_type: isOs ? null : invoiceType,
                     net_amount: (item.total_price - (finalVatAmount * itemRatio)),
                     branch_id: activeBranchId,
-                    transaction_label: transactionLabel,
+                    transaction_label: sanitizeString(transactionLabel),
                     ...(originalDate ? { date: originalDate, edited_at: new Date().toISOString() } : {})
                 };
+
             });
 
             const { data: insertedData, error: insertError } = await supabase.from('sales').insert(salesToInsert).select('*, products(name, brand)');
@@ -463,9 +585,11 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             }
 
             setSuccess(true);
+            localStorage.removeItem(DRAFT_KEY);
             toast.success('Sale saved', { duration: 2000 });
             setTimeout(() => {
                 onSuccess(insertedData as unknown as unknown[]);
+
                 // Auto-reset for next sale instead of closing
                 setSuccess(false);
                 setError(null);
@@ -495,12 +619,12 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                 }, 100);
             }, 800);
 
-        } catch (err: any) {
-            setError(err.message || 'Error processing transaction');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Error processing transaction');
         } finally {
             setLoading(false);
         }
-    }, [loading, success, invoiceNumber, orNumber, items, editData, subtotal, finalVatAmount, finalDiscountAmount, customerName, customerId, fulfillmentStatus, paymentMode, isDiscountEnabled, isOs, deliveryFee, currentVatClassification, invoiceType, activeBranchId, originalDate, products, logAction, onSuccess, onClose, transactionLabel]);
+    }, [loading, success, invoiceNumber, orNumber, items, editData, subtotal, finalVatAmount, finalDiscountAmount, customerName, customerId, fulfillmentStatus, paymentMode, isDiscountEnabled, isOs, deliveryFee, currentVatClassification, invoiceType, activeBranchId, originalDate, products, logAction, onSuccess, resetNav, fetchLatestInvoice, transactionLabel]);
 
     const validateAndSubmit = useCallback((e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -513,6 +637,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     }, [grandTotal, deliveryFee, showDeliveryPrompt, handleSubmit]);
 
     const handleAddItem = useCallback(() => {
+        setHasChanged(true);
         setItems(prev => [...prev, {
             product_id: '',
             quantity: 1,
@@ -534,6 +659,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     }, [items.length]);
 
     const handleRemoveItem = useCallback((index: number) => {
+        setHasChanged(true);
         setItems(prev => {
             if (prev.length === 1) return prev;
             return prev.filter((_, i) => i !== index);
@@ -545,11 +671,13 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             const next = [...prev];
             const item = { ...next[index], [field]: value };
 
-            if (field === 'quantity' || field === 'unit_price') {
+            if (field === 'quantity' || field === 'unit_price' || field === 'searchQuery') {
+                setHasChanged(true);
                 const q = field === 'quantity' ? (value as number) : item.quantity;
                 const u = field === 'unit_price' ? (value as number) : item.unit_price;
                 item.total_price = q * u;
             }
+
 
             if (field === 'searchQuery') {
                 item.isSearchOpen = true;
@@ -694,11 +822,13 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             unit_price: product.selling_price || 0,
             total_price: newItems[index].quantity * (product.selling_price || 0),
             brand: product.brand,
+            unit: product.unit || 'pc',
             searchQuery: product.name,
             isSearchOpen: false,
             highlightedIndex: 0
         };
         setItems(newItems);
+        setHasChanged(true);
 
         // Auto-focus quantity input after selection
         setTimeout(() => {
@@ -730,11 +860,12 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                         <div className="w-8 h-8 bg-brand-red rounded-lg flex items-center justify-center text-white"><ShoppingCart size={16} /></div>
                         <h2 className="text-base font-bold text-white uppercase tracking-wider">{editData ? 'Edit Sale' : 'New Sale'}</h2>
                     </div>
-                    <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors"><X size={18} /></button>
+                    <button onClick={handleSafeClose} className="text-slate-400 hover:text-white transition-colors"><X size={18} /></button>
                 </div>
 
+
                 <div className="flex-1 overflow-y-auto p-4 scrollbar-hide bg-surface">
-                    {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl flex items-center gap-2"><AlertCircle size={16} /> {error}</div>}
+                    {error && <div className="mb-4 p-3 bg-danger-subtle border border-danger text-danger text-sm rounded-xl flex items-center gap-2"><AlertCircle size={16} /> {error}</div>}
                     <form id="order-form" onSubmit={validateAndSubmit} className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
                             <div className="lg:col-span-4 p-3 bg-brand-charcoal rounded-2xl border border-border-strong px-4 flex items-center justify-between shadow-soft h-[68px]">
@@ -793,12 +924,13 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                 </div>
                             </div>
                              <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
-                                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-1.5 flex items-center gap-2"><Tag size={12} /> Accounting Label</label>
+                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><Tag size={12} /> Accounting Label</label>
                                 <select 
                                     className="w-full bg-surface border border-border-default rounded-xl px-2 py-1.5 text-xs font-black text-text-primary outline-none focus:ring-2 focus:ring-brand-red/10 appearance-none cursor-pointer uppercase"
                                     value={transactionLabel}
-                                    onChange={(e) => setTransactionLabel(e.target.value)}
+                                    onChange={(e) => { setTransactionLabel(e.target.value); setHasChanged(true); }}
                                 >
+
                                     <option value="">NO LABEL</option>
                                     {AR_LABELS.map(label => (
                                         <option key={label.id} value={label.id}>{label.label}</option>
@@ -807,7 +939,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                             </div>
 
                              <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default relative h-[68px]">
-                                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-1.5 flex items-center gap-2"><User size={12} /> Customer Name</label>
+                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><User size={12} /> Customer Name</label>
                                 <div className="relative">
                                     <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"><Users size={12} /></div>
                                     <input
@@ -821,6 +953,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                             setCustomerName(e.target.value);
                                             setIsCustomerSearchOpen(true);
                                             setCustomerHighlightedIndex(0);
+                                            setHasChanged(true);
                                             if (!e.target.value) setCustomerId(null);
                                         }}
                                         onFocus={(e) => {
@@ -850,8 +983,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                         }}
                                     />
                                     {isCustomerSearchOpen && (
-                                        <div className="absolute z-[110] left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-xl shadow-xl max-h-[200px] overflow-y-auto overflow-x-hidden">
-                                            {customers.filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase())).length > 0 ? (
+                                        <div className="absolute z-[110] left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-xl shadow-xl max-h-[200px] overflow-y-auto overflow-x-hidden">                                             {customers.filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase())).length > 0 ? (
                                                 customers.filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase())).map((c, index) => (
                                                     <button
                                                         key={c.id}
@@ -863,32 +995,52 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                                             setCustomerSearchQuery(c.name);
                                                             setIsCustomerSearchOpen(false);
                                                         }}
-                                                        className={`w-full text-left px-4 py-2 border-b border-slate-50 last:border-0 text-xs font-bold uppercase transition-colors ${customerHighlightedIndex === index ? 'bg-brand-red/5 text-brand-red' : 'text-brand-charcoal'}`}
+                                                        className={`w-full text-left px-4 py-2 border-b border-border-default last:border-0 text-xs font-bold uppercase transition-colors ${customerHighlightedIndex === index ? 'bg-brand-red/5 text-brand-red' : 'text-text-primary'}`}
                                                     >
                                                         {c.name}
                                                     </button>
                                                 ))
-                                            ) : (
+                                            ) : null}
+                                            
+                                            {customerSearchQuery.trim() && !customers.find(c => c.name.toLowerCase() === customerSearchQuery.trim().toLowerCase()) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setIsCustomerSearchOpen(false);
+                                                        toast.info(`New customer "${customerSearchQuery}" will be created on save`);
+                                                    }}
+                                                    className="w-full text-left px-4 py-3 hover:bg-brand-red-light/10 text-brand-red border-t border-brand-red/10 animate-pulse bg-brand-red/5"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Plus size={12} />
+                                                        <span className="text-[9px] font-black uppercase tracking-widest text-brand-red">Create New Customer: {customerSearchQuery.toUpperCase()}</span>
+                                                    </div>
+                                                </button>
+                                            )}
+
+                                            {!customerSearchQuery.trim() && customers.length === 0 && (
                                                 <div className="px-4 py-3 text-[10px] font-bold text-slate-400 text-center uppercase tracking-widest">
-                                                    NEW CUSTOMER (TEXT ONLY)
+                                                    NO CUSTOMERS FOUND
                                                 </div>
                                             )}
                                         </div>
+
                                     )}
                                 </div>
                             </div>
 
-                             <div className="lg:col-span-4 p-2 bg-slate-50 rounded-xl border border-slate-100 h-[68px]">
-                                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-1.5 flex items-center gap-2"><Truck size={12} /> Fulfillment</label>
-                                <select className="w-full bg-surface border border-border-default rounded-xl px-2 py-1.5 text-xs outline-none shadow-sm cursor-pointer font-bold h-[32px]" value={fulfillmentStatus} onChange={(e) => setFulfillmentStatus(e.target.value as 'pickup' | 'delivered' | 'out')}>
+                             <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
+                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><Truck size={12} /> Fulfillment</label>
+                                <select className="w-full bg-surface border border-border-default rounded-xl px-2 py-1.5 text-xs outline-none shadow-sm cursor-pointer font-bold text-text-primary h-[32px]" value={fulfillmentStatus} onChange={(e) => { setFulfillmentStatus(e.target.value as 'pickup' | 'delivered' | 'out'); setHasChanged(true); }}>
                                     <option value="pickup">Store Pickup</option>
                                     <option value="out">Product Out</option>
                                     <option value="delivered">Delivered</option>
                                 </select>
+
                             </div>
 
-                            <div className="lg:col-span-4 p-2 bg-slate-50 rounded-xl border border-slate-100 h-[68px]">
-                                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-1.5 flex items-center gap-2"><CreditCard size={12} strokeWidth={2.5} /> Settlement</label>
+                            <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
+                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><CreditCard size={12} strokeWidth={2.5} /> Settlement</label>
                                 <div className="grid grid-cols-2 gap-1.5">
                                     {PAYMENT_MODES.slice(0, 2).map(mode => (
                                         <button
@@ -913,30 +1065,31 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                 </div>
                             </div>
 
-                            <div className="lg:col-span-4 p-2 bg-slate-50 rounded-xl border border-slate-100 h-[68px]">
-                                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-widest mb-1.5 flex items-center gap-2"><Percent size={12} /> Adjustments & Tax</label>
+                            <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
+                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><Percent size={12} /> Adjustments & Tax</label>
                                 <div className="flex gap-2">
                                     <select
                                         className={`flex-1 py-1 px-1 rounded-lg border text-[8px] font-black tracking-widest transition-all outline-none ${vatClassification === 'vatable' ? 'bg-slate-800 text-white border-slate-800' : 'bg-surface text-text-muted border-border-default'}`}
                                         value={vatClassification}
-                                        onChange={(e) => setVatClassification(e.target.value as VatClassification)}
+                                        onChange={(e) => { setVatClassification(e.target.value as VatClassification); setHasChanged(true); }}
                                     >
                                         <option value="vatable">VAT</option>
                                         <option value="exempt">EXE</option>
                                         <option value="zero_rated">ZERO</option>
                                     </select>
-                                    <button type="button" onClick={() => setIsDiscountEnabled(!isDiscountEnabled)} className={`flex-1 py-1 rounded-lg border text-[8px] font-black tracking-widest transition-all ${isDiscountEnabled ? 'bg-brand-orange text-white border-brand-orange' : 'bg-surface text-text-muted border-border-default'}`}>DSC</button>
+                                    <button type="button" onClick={() => { setIsDiscountEnabled(!isDiscountEnabled); setHasChanged(true); }} className={`flex-1 py-1 rounded-lg border text-[8px] font-black tracking-widest transition-all ${isDiscountEnabled ? 'bg-brand-orange text-white border-brand-orange' : 'bg-surface text-text-muted border-border-default'}`}>DSC</button>
                                 </div>
+
                             </div>
                         </div >
 
 
 
                         <div className="space-y-4">
-                            <div className="flex justify-between items-center border-b pb-2"><h3 className="text-xs font-black uppercase text-brand-charcoal tracking-widest">Order Items</h3><button type="button" onClick={handleAddItem} className="bg-brand-red-light text-brand-red px-4 py-2 rounded-xl text-[10px] font-black hover:bg-brand-red hover:text-white transition-all"><Plus size={14} className="inline mr-1" /> ADD ITEM</button></div>
+                            <div className="flex justify-between items-center border-b border-border-default pb-2"><h3 className="text-xs font-black uppercase text-text-primary tracking-widest">Order Items</h3><button type="button" onClick={handleAddItem} className="bg-brand-red-light text-brand-red px-4 py-2 rounded-xl text-[10px] font-black hover:bg-brand-red hover:text-white transition-all"><Plus size={14} className="inline mr-1" /> ADD ITEM</button></div>
                             <div className="space-y-3 pb-40" tabIndex={focusedIndex >= 0 ? 0 : -1} onKeyDown={focusedIndex >= 0 ? handleListKeyDown : undefined} style={{ outline: 'none' }}>
                                 {items.map((item, index) => (
-                                    <div key={index} className={`flex flex-col lg:flex-row gap-2 p-2 rounded-xl shadow-sm transition-all group/item overflow-visible ${item.product_id && focusedIndex === completedItems.indexOf(item) ? 'bg-blue-50 border-2 border-accent-primary ring-2 ring-accent-subtle' : 'bg-white border border-slate-100 hover:border-brand-red/20'}`}>
+                                    <div key={index} className={`flex flex-col lg:flex-row gap-2 p-2 rounded-xl shadow-sm transition-all group/item overflow-visible ${item.product_id && focusedIndex === completedItems.indexOf(item) ? 'bg-accent-subtle border-2 border-accent-primary ring-2 ring-accent-subtle' : 'bg-surface border border-border-default hover:border-brand-red/20'}`}>
                                         {/* Keyboard shortcut indicators for focused row */}
                                         {item.product_id && focusedIndex === completedItems.indexOf(item) && (
                                             <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-accent-primary mb-1 lg:mb-0">
@@ -949,13 +1102,13 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                             </div>
                                         )}
                                         <div className="flex-[4] relative" ref={el => { dropdownRefs.current[index] = el; }}>
-                                            <label className="block text-[9px] font-black text-brand-charcoal mb-1.5 uppercase">Product</label>
+                                            <label className="block text-[9px] font-black text-text-primary mb-1.5 uppercase">Product</label>
                                             <div className="relative">
                                                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Search size={14} /></div>
                                                 <input
                                                     type="text"
                                                     placeholder="Focus to search product..."
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2.5 text-xs font-medium focus:ring-2 focus:ring-brand-red/10 focus:border-brand-red/30 outline-none"
+                                                    className="w-full bg-subtle border border-border-default rounded-xl pl-9 pr-8 py-2.5 text-xs font-medium text-text-primary focus:ring-2 focus:ring-brand-red/10 focus:border-brand-red/30 outline-none placeholder:text-text-muted"
                                                     value={item.searchQuery}
                                                     ref={el => { searchInputRefs.current[index] = el; }}
                                                     onChange={(e) => handleItemChange(index, 'searchQuery', e.target.value)}
@@ -1019,10 +1172,10 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                             </div>
 
                                             {item.isSearchOpen && (
-                                                <div className="absolute z-[100] left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] max-h-[350px] overflow-hidden flex flex-col min-w-[400px] animate-fade-in">
+                                                <div className="absolute z-[100] left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] max-h-[350px] overflow-hidden flex flex-col min-w-[400px] animate-fade-in">
                                                     {/* Back to Master Categories */}
                                                     {!item.searchQuery && item.currentLevel !== 'master' && (
-                                                        <div className="px-4 py-2 bg-slate-50 border-b flex items-center gap-2">
+                                                        <div className="px-4 py-2 bg-subtle border-b border-border-default flex items-center gap-2">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleItemChange(index, 'currentLevel', 'master')}
@@ -1066,25 +1219,25 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                                                             type="button"
                                                                             onMouseEnter={() => handleItemChange(index, 'highlightedIndex', pIdx)}
                                                                             onClick={() => selectProduct(index, p)}
-                                                                            className={`w-full text-left px-4 py-3 border-b border-slate-50 last:border-0 flex flex-col gap-0.5 transition-colors ${item.highlightedIndex === pIdx ? 'bg-brand-red/5' : 'hover:bg-slate-50'}`}
+                                                                            className={`w-full text-left px-4 py-3 border-b border-border-default last:border-0 flex flex-col gap-0.5 transition-colors ${item.highlightedIndex === pIdx ? 'bg-brand-red/5' : 'hover:bg-subtle'}`}
                                                                         >
                                                                             <div className="flex items-center justify-between">
-                                                                                <span className="text-[11px] font-black text-brand-charcoal uppercase">{p.name} {p.brand ? <span className="text-brand-red">[{p.brand}]</span> : ''}</span>
+                                                                                <span className="text-[11px] font-black text-text-primary uppercase">{p.name} {p.brand ? <span className="text-brand-red">[{p.brand}]</span> : ''}</span>
                                                                             </div>
                                                                             <div className="flex items-center justify-between text-[10px]">
-                                                                                <span className="text-slate-500 font-medium font-data flex items-center gap-2">
+                                                                                <span className="text-text-muted font-medium font-data flex items-center gap-2">
                                                                                     STK: <span className={p.stock_available <= 5 ? 'text-brand-red font-bold' : 'text-emerald-600'}>{p.stock_available}</span>
-                                                                                    {p.buying_price && <span className="text-[8px] font-black text-slate-300">[{encodePrice(p.buying_price)}]</span>}
+                                                                                    {p.buying_price && <span className="text-[8px] font-black text-text-muted">[{encodePrice(p.buying_price)}]</span>}
                                                                                 </span>
-                                                                                <span className="text-brand-charcoal font-black font-data">₱{p.selling_price.toLocaleString()}</span>
+                                                                                <span className="text-text-primary font-black font-data">₱{p.selling_price.toLocaleString()}</span>
                                                                             </div>
                                                                         </button>
                                                                     ));
                                                                 }
                                                                 return (
-                                                                    <div className="p-8 text-center bg-slate-50 rounded-xl">
-                                                                        <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-300 mx-auto mb-2"><Search size={16} /></div>
-                                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No products found</p>
+                                                                    <div className="p-8 text-center bg-subtle rounded-xl">
+                                                                        <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center text-text-muted mx-auto mb-2"><Search size={16} /></div>
+                                                                        <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">No products found</p>
                                                                     </div>
                                                                 );
                                                             })()
@@ -1100,10 +1253,10 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                                                         newItems[index].currentLevel = 'product';
                                                                         setItems(newItems);
                                                                     }}
-                                                                    className="w-full text-left px-5 py-4 hover:bg-brand-red-light/10 border-b border-slate-50 last:border-0 flex items-center justify-between group"
+                                                                    className="w-full text-left px-5 py-4 hover:bg-brand-red/5 border-b border-border-default last:border-0 flex items-center justify-between group"
                                                                 >
-                                                                    <span className="text-[11px] font-black text-brand-charcoal uppercase tracking-wider">{m}</span>
-                                                                    <ChevronDown size={14} className="-rotate-90 text-slate-300 group-hover:text-brand-red transition-colors" />
+                                                                    <span className="text-[11px] font-black text-text-primary uppercase tracking-wider">{m}</span>
+                                                                    <ChevronDown size={14} className="-rotate-90 text-text-muted group-hover:text-brand-red transition-colors" />
                                                                 </button>
                                                             ))
                                                         ) : (
@@ -1115,16 +1268,16 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                                                         key={p.id}
                                                                         type="button"
                                                                         onClick={() => selectProduct(index, p)}
-                                                                        className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex flex-col gap-0.5"
+                                                                        className="w-full text-left px-4 py-3 hover:bg-subtle border-b border-border-default last:border-0 flex flex-col gap-0.5"
                                                                     >
                                                                         <div className="flex items-center justify-between">
-                                                                            <span className="text-[11px] font-black text-brand-charcoal uppercase">
+                                                                            <span className="text-[11px] font-black text-text-primary uppercase">
                                                                                 {p.name.split(' > ').slice(1).join(' > ')} {p.brand ? <span className="text-brand-red">[{p.brand}]</span> : ''}
                                                                             </span>
                                                                         </div>
                                                                         <div className="flex items-center justify-between text-[10px]">
-                                                                            <span className="text-slate-500 font-medium font-data">STK: <span className={p.stock_available <= 5 ? 'text-brand-red font-bold' : 'text-emerald-600'}>{p.stock_available}</span></span>
-                                                                            <span className="text-brand-charcoal font-black font-data">₱{p.selling_price.toLocaleString()}</span>
+                                                                            <span className="text-text-muted font-medium font-data">STK: <span className={p.stock_available <= 5 ? 'text-brand-red font-bold' : 'text-emerald-600'}>{p.stock_available}</span></span>
+                                                                            <span className="text-text-primary font-black font-data">₱{p.selling_price.toLocaleString()}</span>
                                                                         </div>
                                                                     </button>
                                                                 ))
@@ -1134,21 +1287,22 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                             )}
                                         </div>
                                         <div className="flex-[2]">
-                                            <label className="block text-[9px] font-black text-brand-charcoal mb-1.5 uppercase">Price (SRP)</label>
+                                            <label className="block text-[9px] font-black text-text-primary mb-1.5 uppercase">Price (SRP)</label>
                                             <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]">₱</span>
-                                                <input readOnly type="number" step="0.01" className="w-full bg-slate-100/50 border border-slate-200 rounded-xl pl-6 pr-3 py-2.5 text-xs font-data text-slate-500 outline-none cursor-not-allowed" value={item.unit_price || ''} />
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[10px]">₱</span>
+                                                <input readOnly type="number" step="0.01" className="w-full bg-muted border border-border-default rounded-xl pl-6 pr-3 py-2.5 text-xs font-data text-text-muted outline-none cursor-not-allowed" value={item.unit_price || ''} />
                                             </div>
                                         </div>
                                         <div className="flex-[1.5]">
-                                            <label className="block text-[9px] font-black text-brand-charcoal mb-1.5 uppercase">Qty</label>
+                                            <label className="block text-[9px] font-black text-text-primary mb-1.5 uppercase">Qty</label>
                                             <input
                                                 type="number"
-                                                min="1"
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-data focus:border-brand-red outline-none shadow-inner"
+                                                step={item.unit?.toLowerCase() === 'elf' ? '0.25' : '1'}
+                                                min="0"
+                                                className="w-full bg-subtle border border-border-default rounded-xl px-3 py-2.5 text-xs font-data text-text-primary focus:border-brand-red outline-none shadow-inner"
                                                 value={item.quantity}
                                                 ref={el => { quantityInputRefs.current[index] = el; }}
-                                                onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value) || 0)}
+                                                onChange={(e) => handleItemChange(index, 'quantity', parseFloat(e.target.value) || 0)}
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') {
                                                         e.preventDefault();
@@ -1168,19 +1322,39 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                                     }
                                                 }}
                                             />
+                                            {item.name?.toLowerCase().includes('elf') && (
+                                                <div className="mt-1.5 p-1.5 bg-brand-red/5 border border-brand-red/10 rounded-lg animate-fade-in group/calc relative">
+                                                    <div className="flex items-center justify-between gap-1">
+                                                        <span className="text-[8px] font-black text-brand-red uppercase tracking-widest leading-none text-left">Cubic Calc</span>
+                                                        <input 
+                                                            type="number" 
+                                                            placeholder="m³"
+                                                            className="w-10 bg-surface border border-border-default rounded px-1 py-0.5 text-[9px] font-data text-text-primary outline-none focus:border-brand-red h-[16px]"
+                                                            onChange={(e) => {
+                                                                const m3 = parseFloat(e.target.value);
+                                                                if (!isNaN(m3)) {
+                                                                    const elf = m3 / 1.6;
+                                                                    const rounded = Math.floor(elf / 0.25) * 0.25;
+                                                                    handleItemChange(index, 'quantity', rounded);
+                                                                }
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="flex-[1.5] hidden lg:block">
-                                            <label className="block text-[9px] font-black text-brand-charcoal mb-1.5 uppercase">After</label>
-                                            <div className={`py-2.5 px-3 rounded-xl border font-data text-center text-xs font-bold ${((item.stock_available || 0) - item.quantity) < 0 ? 'bg-red-50 border-red-200 text-brand-red' : 'bg-emerald-50 border-emerald-100 text-emerald-600'}`}>
+                                            <label className="block text-[9px] font-black text-text-primary mb-1.5 uppercase">After</label>
+                                            <div className={`py-2.5 px-3 rounded-xl border font-data text-center text-xs font-bold ${((item.stock_available || 0) - item.quantity) < 0 ? 'bg-danger-subtle border-danger text-brand-red' : 'bg-success-subtle border-success text-emerald-600'}`}>
                                                 {(item.stock_available || 0) - item.quantity}
                                             </div>
                                         </div>
                                         <div className="flex-[2.5] text-right min-w-[120px]">
-                                            <label className="block text-[9px] font-black text-brand-charcoal mb-1.5 uppercase">Sub-Total</label>
-                                            <div className="py-2.5 font-black text-lg text-brand-charcoal font-data overflow-hidden text-ellipsis">₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                                            <label className="block text-[9px] font-black text-text-primary mb-1.5 uppercase">Sub-Total</label>
+                                            <div className="py-2.5 font-black text-lg text-text-primary font-data overflow-hidden text-ellipsis">₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                                         </div>
                                         <div className="flex items-center justify-center lg:pt-5">
-                                            <button type="button" onClick={() => handleRemoveItem(index)} disabled={items.length === 1} className="p-2.5 text-slate-300 hover:text-brand-red hover:bg-brand-red/5 rounded-xl transition-all disabled:opacity-0"><Trash2 size={18} /></button>
+                                            <button type="button" onClick={() => handleRemoveItem(index)} disabled={items.length === 1} className="p-2.5 text-text-muted hover:text-brand-red hover:bg-brand-red/5 rounded-xl transition-all disabled:opacity-0"><Trash2 size={18} /></button>
                                         </div>
                                     </div>
                                 ))}
@@ -1235,12 +1409,12 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             {/* Delivery Prompt Overlay */}
             {showDeliveryPrompt && (
                 <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-brand-charcoal/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-100 animate-slide-up">
+                    <div className="bg-surface rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-border-default animate-slide-up">
                         <div className="w-16 h-16 bg-brand-red-light rounded-2xl flex items-center justify-center text-brand-red mb-6 mx-auto">
                             <Truck size={32} />
                         </div>
-                        <h3 className="text-2xl font-black text-brand-charcoal text-center mb-1">Deliver</h3>
-                        <p className="text-slate-400 text-center text-[10px] font-black uppercase tracking-[0.2em] mb-8">ORDER IS BELOW 5,000</p>
+                        <h3 className="text-2xl font-black text-text-primary text-center mb-1">Deliver</h3>
+                        <p className="text-text-muted text-center text-[10px] font-black uppercase tracking-[0.2em] mb-8">ORDER IS BELOW 5,000</p>
 
                         <div className="space-y-3">
                             {promptStep === 'confirm' ? (
@@ -1261,21 +1435,21 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                             setDeliveryFee(0);
                                             handleSubmit();
                                         }}
-                                        className="w-full py-4 bg-white border-2 border-slate-100 text-slate-400 rounded-2xl font-bold text-xs hover:border-slate-200 hover:text-slate-500 transition-all uppercase tracking-widest disabled:opacity-50"
+                                        className="w-full py-4 bg-surface border-2 border-border-default text-text-muted rounded-2xl font-bold text-xs hover:border-border-strong hover:text-text-secondary transition-all uppercase tracking-widest disabled:opacity-50"
                                     >
                                         NO
                                     </button>
                                 </>
                             ) : (
                                 <div className="animate-fade-in text-center">
-                                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 mb-4">
-                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 text-center">DELIVERY FEE (PHP)</label>
+                                    <div className="p-4 bg-subtle rounded-2xl border border-border-default mb-4">
+                                        <label className="block text-[10px] font-black text-text-muted uppercase tracking-widest mb-2 text-center">DELIVERY FEE (PHP)</label>
                                         <div className="relative">
                                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₱</span>
                                             <input
                                                 type="number"
                                                 autoFocus
-                                                className="w-full bg-white border-2 border-brand-red/20 rounded-xl pl-8 pr-4 py-3 text-lg font-data font-black text-brand-charcoal outline-none focus:ring-2 focus:ring-brand-red/10 focus:border-brand-red/50 transition-all text-center"
+                                                className="w-full bg-surface border-2 border-brand-red/20 rounded-xl pl-8 pr-4 py-3 text-lg font-data font-black text-text-primary outline-none focus:ring-2 focus:ring-brand-red/10 focus:border-brand-red/50 transition-all text-center"
                                                 placeholder="0.00"
                                                 value={deliveryFee || ''}
                                                 onChange={(e) => setDeliveryFee(parseFloat(e.target.value) || 0)}
@@ -1298,14 +1472,14 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                             setDeliveryFee(0);
                                             handleSubmit();
                                         }}
-                                        className="w-full py-1 text-slate-300 hover:text-slate-400 mt-2 text-[9px] font-bold uppercase tracking-widest"
+                                        className="w-full py-1 text-text-muted hover:text-text-secondary mt-2 text-[9px] font-bold uppercase tracking-widest"
                                     >
                                         CONTINUE WITHOUT FEE
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setShowDeliveryPrompt(false)}
-                                        className="w-full py-2 text-slate-400 hover:text-slate-500 transition-all text-[10px] font-black uppercase tracking-widest mt-1"
+                                        className="w-full py-2 text-text-muted hover:text-text-secondary transition-all text-[10px] font-black uppercase tracking-widest mt-1"
                                     >
                                         BACK
                                     </button>

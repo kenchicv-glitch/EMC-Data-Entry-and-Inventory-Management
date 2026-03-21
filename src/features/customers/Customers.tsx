@@ -9,7 +9,7 @@ import {
     RotateCcw, Clock, Truck, Calendar, TrendingUp, Filter,
     ArrowRight
 } from 'lucide-react';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 import CustomerModal from './components/CustomerModal';
 import SalesModal from '../sales/components/SalesModal';
 import type { Customer, CustomerInsert } from '../../shared/types';

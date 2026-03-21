@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAudit } from '../../shared/hooks/useAudit';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 import type { Product } from '../inventory/types/product';
 import { toast } from 'sonner';
 import { isSmartMatch } from '../../shared/lib/searchUtils';
@@ -24,7 +24,7 @@ interface ExpressRow {
     isSearchOpen: boolean;
     highlightedIndex: number;
     payment_mode: 'cash' | 'gcash' | 'card' | 'check';
-    is_os: boolean;
+    isOs: boolean;
     invoice_type: 'A' | 'B';
 }
 
@@ -57,7 +57,7 @@ export default function ExpressSales() {
             isSearchOpen: false,
             highlightedIndex: 0,
             payment_mode: 'cash',
-            is_os: true,
+            isOs: true,
             invoice_type: 'A'
         };
     }
@@ -83,10 +83,10 @@ export default function ExpressSales() {
 
             if (lastSalesRes.data && lastSalesRes.data.length > 0) {
                 const lastNum = lastSalesRes.data[0].invoice_number;
-                const is_os = lastNum.startsWith('OS-');
-                setRows(prev => prev.map((row, i) => i === 0 ? { ...row, invoice_number: incrementInvoice(lastNum), is_os } : row));
+                const isOs = lastNum.startsWith('OS-');
+                setRows(prev => prev.map((row, i) => i === 0 ? { ...row, invoice_number: incrementInvoice(lastNum), isOs } : row));
             } else {
-                setRows(prev => prev.map((row, i) => i === 0 ? { ...row, invoice_number: 'OS-000001', is_os: true } : row));
+                setRows(prev => prev.map((row, i) => i === 0 ? { ...row, invoice_number: 'OS-000001', isOs: true } : row));
             }
             setLoading(false);
             // Focus first search input when data is loaded
@@ -107,7 +107,7 @@ export default function ExpressSales() {
         const lastRow = rows[rows.length - 1];
         const newRow = createEmptyRow();
         newRow.invoice_number = incrementInvoice(lastRow.invoice_number);
-        newRow.is_os = lastRow.is_os;
+        newRow.isOs = lastRow.isOs;
         newRow.invoice_type = lastRow.invoice_type;
         setRows([...rows, newRow]);
     };
@@ -199,11 +199,11 @@ export default function ExpressSales() {
                 unit_price: r.unit_price,
                 total_price: r.total_price,
                 payment_mode: r.payment_mode,
-                is_os: r.is_os,
+                is_os: r.isOs,
                 fulfillment_status: 'pickup',
                 date: new Date().toISOString(),
                 or_number: r.invoice_number,
-                invoice_type: r.is_os ? null : r.invoice_type,
+                invoice_type: r.isOs ? null : r.invoice_type,
                 net_amount: r.total_price,
                 branch_id: activeBranchId
             }));
@@ -306,13 +306,13 @@ export default function ExpressSales() {
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    const newIsOs = !row.is_os;
+                                                    const newIsOs = !row.isOs;
                                                     const newInv = newIsOs 
                                                         ? (row.invoice_number.startsWith('OS-') ? row.invoice_number : `OS-${row.invoice_number}`)
                                                         : row.invoice_number.replace('OS-', '');
-                                                    updateRow(index, { is_os: newIsOs, invoice_number: newInv });
+                                                    updateRow(index, { isOs: newIsOs, invoice_number: newInv });
                                                 }}
-                                                className={`px-1.5 py-0.5 rounded text-[8px] font-black transition-all ${row.is_os ? 'bg-brand-red text-white' : 'bg-slate-100 text-slate-400'}`}
+                                                className={`px-1.5 py-0.5 rounded text-[8px] font-black transition-all ${row.isOs ? 'bg-brand-red text-white' : 'bg-slate-100 text-slate-400'}`}
                                             >
                                                 OS
                                             </button>

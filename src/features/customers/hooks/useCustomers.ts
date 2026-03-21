@@ -2,22 +2,22 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customerService } from '../services/customerService';
 import type { CustomerInsert, CustomerUpdate } from '../../../shared/types';
 import { toast } from 'sonner';
-
-import { useBranch } from '../../../shared/lib/BranchContext';
+import { useBranch } from '../../../shared/hooks/useBranch';
+import { queryKeys } from '../../../shared/lib/queryKeys';
 
 export const useCustomers = () => {
     const queryClient = useQueryClient();
     const { activeBranchId } = useBranch();
 
     const customersQuery = useQuery({
-        queryKey: ['customers', activeBranchId],
+        queryKey: queryKeys.customers.list(activeBranchId),
         queryFn: () => customerService.getAll(activeBranchId),
     });
 
     const createCustomerMutation = useMutation({
         mutationFn: (newCustomer: CustomerInsert) => customerService.create(newCustomer),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['customers'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.customers.all });
             toast.success('Customer created successfully');
         },
         onError: (error: Error) => {
@@ -29,7 +29,7 @@ export const useCustomers = () => {
         mutationFn: ({ id, updates }: { id: string; updates: CustomerUpdate }) =>
             customerService.update(id, updates),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['customers'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.customers.all });
             toast.success('Customer updated successfully');
         },
         onError: (error: Error) => {
@@ -40,7 +40,7 @@ export const useCustomers = () => {
     const deleteCustomerMutation = useMutation({
         mutationFn: (id: string) => customerService.delete(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['customers'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.customers.all });
             toast.success('Customer deleted successfully');
         },
         onError: (error: Error) => {

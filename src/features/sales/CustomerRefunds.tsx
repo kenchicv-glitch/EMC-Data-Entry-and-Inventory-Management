@@ -4,7 +4,7 @@ import { RotateCcw, Plus, Search, ChevronDown, ChevronRight, Package } from 'luc
 import { format, isSameDay, subDays } from 'date-fns';
 import RefundModal from './components/RefundModal';
 import Calendar from '../../features/reports/components/Calendar';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 
 interface RefundItem {
     id: string;

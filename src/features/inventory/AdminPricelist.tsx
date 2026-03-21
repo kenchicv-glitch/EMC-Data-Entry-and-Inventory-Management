@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../shared/lib/supabase';
 import { useAuth } from '../../shared/hooks/useAuth';
 import {
     ChevronDown, ChevronUp, Plus, Search, Edit, Tag,
-    Eye, EyeOff, Save, CheckCircle, AlertCircle, Filter, Package
+    Eye, EyeOff, Save, CheckCircle, AlertCircle, Filter, Package, X
 } from 'lucide-react';
 import ProductModal from './components/ProductModal';
 import { encodePrice, isEncoded, decodePrice } from '../../shared/lib/priceCodes';
 import { useBranch } from '../../shared/hooks/useBranch';
+import { productService } from './services/productService';
+import { RefreshCw } from 'lucide-react';
 
 interface Product {
     id: string;
@@ -36,7 +38,7 @@ export default function AdminPricelist() {
 
     const { activeBranchId } = useBranch();
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         let query = supabase
             .from('products')
@@ -56,11 +58,14 @@ export default function AdminPricelist() {
             setProducts(data || []);
         }
         setLoading(false);
-    };
+    }, [activeBranchId]);
 
     useEffect(() => {
-        fetchData();
-    }, [activeBranchId]);
+        const load = async () => {
+            await fetchData();
+        };
+        load();
+    }, [fetchData]);
 
     const handleSavePrice = async (id: string, field: 'srp' | 'wsp' | 'trigger') => {
         if (role !== 'owner') {
@@ -112,11 +117,40 @@ export default function AdminPricelist() {
         }
     };
 
+    const handleStandardizeUnits = async () => {
+        if (role !== 'owner') return;
+        setLoading(true);
+        try {
+            const count = await productService.standardizeUnits();
+            await fetchData();
+            setMessage({ type: 'success', text: `Successfully standardized units for ${count} items.` });
+            setTimeout(() => setMessage(null), 5000);
+        } catch (err: any) {
+            setMessage({ type: 'error', text: `Standardization failed: ${err.message}` });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const toggleL1 = (l1: string) => {
         const next = new Set(expandedL1s);
-        if (next.has(l1)) next.delete(l1);
-        else next.add(l1);
+        const nextSubs = new Set(expandedSubCats);
+        if (next.has(l1)) {
+            next.delete(l1);
+            // Also collapse all subcategories within this L1
+            for (const key of nextSubs) {
+                if (key.startsWith(l1 + ' > ')) nextSubs.delete(key);
+            }
+        } else {
+            next.add(l1);
+            // Also expand all subcategories within this L1
+            const itemsInL1 = grouped[l1] || {};
+            for (const subCat of Object.keys(itemsInL1)) {
+                nextSubs.add(`${l1} > ${subCat}`);
+            }
+        }
         setExpandedL1s(next);
+        setExpandedSubCats(nextSubs);
     };
 
     const toggleSubCat = (sc: string) => {
@@ -127,8 +161,11 @@ export default function AdminPricelist() {
     };
 
     const filtered = products.filter(p => {
-        const searchMatched = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (p.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+        const searchTerms = searchTerm.toLowerCase().split(' ').filter(Boolean);
+        const searchMatched = searchTerms.every(term => 
+            p.name.toLowerCase().includes(term) || 
+            (p.brand?.toLowerCase().includes(term) ?? false)
+        );
         const l1 = p.name.split(' > ')[0] || 'Uncategorized';
         const categoryMatched = categoryFilter === 'All' || l1 === categoryFilter;
         return searchMatched && categoryMatched;
@@ -144,8 +181,32 @@ export default function AdminPricelist() {
         return acc;
     }, {});
 
+    const getMasterColor = (master: string) => {
+        const m = master.toUpperCase();
+        if (m.includes('STEEL')) return '#1E8449';
+        if (m.includes('PLYWOOD')) return '#0369A1';
+        if (m.includes('ELECTRICALS')) return '#7C3AED';
+        if (m.includes('ROOFING')) return '#B45309';
+        if (m.includes('LUMBER')) return '#8B4513';
+        if (m.includes('PIPES AND FITTINGS')) return '#2563EB';
+        if (m.includes('HARDWARE AND FASTENERS')) return '#4B5563';
+        if (m.includes('CEMENT AND AGGREGATES')) return '#52525B';
+        if (m.includes('DOORS AND FIXTURES')) return '#92400E';
+        if (m.includes('PAINTS AND FINISHES')) return '#DB2777';
+        if (m.includes('BOYSEN')) return '#F59E0B';
+        return '#EF4444'; // Brand Red default
+    };
+
+    const CANONICAL_CATEGORIES = [
+        'STEEL', 'PLYWOOD', 'ELECTRICALS', 'ROOFING', 'LUMBER',
+        'PIPES AND FITTINGS', 'HARDWARE AND FASTENERS',
+        'CEMENT AND AGGREGATES', 'DOORS AND FIXTURES', 'PAINTS AND FINISHES',
+        'BOYSEN'
+    ];
+
     const sortedL1s = Object.keys(grouped).sort();
-    const allCategories = Array.from(new Set(products.map(p => p.name.split(' > ')[0] || 'Uncategorized'))).sort();
+    const allCategories = CANONICAL_CATEGORIES.sort();
+
 
     const stats = {
         totalSrpValue: products.reduce((acc, p) => acc + ((p.stock_available || 0) * (p.selling_price || 0)), 0),
@@ -197,14 +258,39 @@ export default function AdminPricelist() {
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
+                        {searchTerm && (
+                            <button
+                                onClick={() => {
+                                    setSearchTerm('');
+                                    if (categoryFilter === 'All') {
+                                        setExpandedL1s(new Set());
+                                        setExpandedSubCats(new Set());
+                                    }
+                                }}
+                                className="text-text-muted hover:text-brand-red transition-colors"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
                     </div>
                     {role === 'owner' && (
-                        <button
-                            onClick={() => setIsModalOpen(true)}
-                            className="flex items-center gap-2 bg-brand-red hover:bg-brand-red-dark text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-red transition-all active:scale-95 flex-shrink-0"
-                        >
-                            <Plus size={14} /> Add Product
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleStandardizeUnits}
+                                disabled={loading}
+                                title="Standardize units based on item names (e.g. - 1 ELF -> ELF)"
+                                className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
+                            >
+                                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                                Standardize Units
+                            </button>
+                            <button
+                                onClick={() => setIsModalOpen(true)}
+                                className="flex items-center gap-2 bg-brand-red hover:bg-brand-red-dark text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-red transition-all active:scale-95 flex-shrink-0"
+                            >
+                                <Plus size={14} /> Add Product
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
@@ -222,20 +308,33 @@ export default function AdminPricelist() {
                 <div className="hidden xl:block w-56 sticky top-24 space-y-1 bg-bg-surface p-3 rounded-2xl border border-border-muted shadow-sm overflow-y-auto max-h-[calc(100vh-140px)] custom-scrollbar">
                     <p className="text-[9px] font-black text-text-muted uppercase tracking-widest px-2 mb-3">Master Groups</p>
                     <button
-                        onClick={() => setCategoryFilter('All')}
+                        onClick={() => { setCategoryFilter('All'); setExpandedL1s(new Set()); setExpandedSubCats(new Set()); }}
                         className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all ${categoryFilter === 'All' ? 'bg-brand-red text-white shadow-sm' : 'text-text-muted hover:bg-bg-subtle'}`}
                     >
                         All Categories
                     </button>
-                    {allCategories.map(cat => (
-                        <button
-                            key={cat}
-                            onClick={() => setCategoryFilter(cat)}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all truncate ${categoryFilter === cat ? 'bg-brand-red text-white shadow-sm' : 'text-text-muted hover:bg-bg-subtle'}`}
-                        >
-                            {cat}
-                        </button>
-                    ))}
+                    {allCategories.map(cat => {
+                        const mColor = getMasterColor(cat);
+                        const isActive = categoryFilter === cat;
+                        return (
+                            <button
+                                key={cat}
+                                onClick={() => setCategoryFilter(cat)}
+                                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all truncate border-l-2 ${
+                                    isActive 
+                                    ? 'text-white shadow-sm' 
+                                    : 'text-text-muted hover:bg-bg-subtle border-transparent'
+                                }`}
+                                style={{ 
+                                    backgroundColor: isActive ? mColor : undefined,
+                                    borderLeftColor: isActive ? 'white' : mColor
+                                }}
+                            >
+                                {cat}
+                            </button>
+                        );
+                    })}
+
                 </div>
 
                 <div className="flex-1 space-y-8 pb-10">
@@ -245,7 +344,14 @@ export default function AdminPricelist() {
                             <select
                                 className="w-full bg-bg-surface border border-border-muted rounded-xl pl-9 pr-4 py-2 text-xs font-black text-text-primary appearance-none shadow-sm outline-none focus:ring-2 focus:ring-brand-red/10"
                                 value={categoryFilter}
-                                onChange={(e) => setCategoryFilter(e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setCategoryFilter(val);
+                                    if (val === 'All') {
+                                        setExpandedL1s(new Set());
+                                        setExpandedSubCats(new Set());
+                                    }
+                                }}
                             >
                                 <option value="All">All Categories</option>
                                 {allCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
@@ -257,28 +363,36 @@ export default function AdminPricelist() {
                         <div className="space-y-4">
                             {[1, 2, 3].map(i => <div key={i} className="h-24 bg-white rounded-2xl border border-slate-100 animate-pulse" />)}
                         </div>
-                    ) : sortedL1s.length > 0 ? (
-                        sortedL1s.map(l1 => {
+                    ) : (categoryFilter !== 'All' ? sortedL1s : allCategories).length > 0 ? (
+                        (categoryFilter !== 'All' ? sortedL1s : allCategories).map(l1 => {
                             const isL1Expanded = expandedL1s.has(l1) || searchTerm !== '' || categoryFilter !== 'All';
+                            const mColor = getMasterColor(l1);
+                            const itemsInL1 = grouped[l1] || {};
+                            
                             return (
                                 <div key={l1} className="space-y-3">
                                     <div
                                         onClick={() => toggleL1(l1)}
-                                        className="flex items-center justify-between border-l-4 border-text-primary pl-4 py-2 bg-bg-subtle/30 rounded-r-xl cursor-pointer group hover:bg-bg-subtle/50 transition-all font-data"
+                                        className="flex items-center justify-between border-l-4 pl-4 py-2 bg-bg-subtle/30 rounded-r-xl cursor-pointer group hover:bg-bg-subtle/50 transition-all font-data"
+                                        style={{ borderLeftColor: mColor }}
                                     >
                                         <div className="flex items-center gap-3">
-                                            <div className={`p-1 rounded-md transition-all ${isL1Expanded ? 'bg-text-primary text-text-inverse' : 'bg-bg-surface text-text-muted border border-border-muted'}`}>
+                                            <div 
+                                                className={`p-1 rounded-md transition-all ${isL1Expanded ? 'text-text-inverse shadow-sm' : 'bg-bg-surface text-text-muted border border-border-muted'}`}
+                                                style={{ backgroundColor: isL1Expanded ? mColor : undefined }}
+                                            >
                                                 {isL1Expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                             </div>
-                                            <h2 className="text-lg font-black text-text-primary tracking-tighter uppercase">{l1} PRICELIST</h2>
+                                            <h2 className="text-lg font-black tracking-tighter uppercase" style={{ color: mColor }}>{l1} PRICELIST</h2>
                                         </div>
                                         <span className="text-[10px] font-black text-text-muted uppercase tracking-widest pr-4">
-                                            {Object.values(grouped[l1]).flat().length} Items
+                                            {Object.values(itemsInL1).flat().length} Items
                                         </span>
                                     </div>
 
+
                                     <div className={`grid grid-cols-1 gap-6 transition-all duration-300 ${isL1Expanded ? 'max-h-[10000px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                                        {Object.keys(grouped[l1]).sort().map(subCat => {
+                                        {Object.keys(itemsInL1).sort().map(subCat => {
                                             const subCatKey = `${l1} > ${subCat}`;
                                             const isExpanded = expandedSubCats.has(subCatKey) || searchTerm !== '' || categoryFilter !== 'All';
                                             return (
@@ -293,7 +407,7 @@ export default function AdminPricelist() {
                                                             </div>
                                                             {subCat}
                                                         </h3>
-                                                        <span className="text-[8px] font-black text-text-muted uppercase tracking-tighter">{grouped[l1][subCat].length} items</span>
+                                                        <span className="text-[8px] font-black text-text-muted uppercase tracking-tighter">{itemsInL1[subCat].length} items</span>
                                                     </div>
 
                                                     <div className={`overflow-x-auto transition-all duration-300 ${isExpanded ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'}`}>

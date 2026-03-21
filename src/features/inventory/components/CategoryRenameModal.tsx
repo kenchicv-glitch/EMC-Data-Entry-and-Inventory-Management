@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { supabase } from '../../../shared/lib/supabase';
 import { X, Save, AlertTriangle, Loader2 } from 'lucide-react';
-import { useBranch } from '../../../shared/lib/BranchContext';
+import { useProducts } from '../hooks/useProducts';
 
 interface CategoryRenameModalProps {
     isOpen: boolean;
@@ -13,10 +12,10 @@ interface CategoryRenameModalProps {
 }
 
 export default function CategoryRenameModal({ isOpen, onClose, onSuccess, currentName, level }: CategoryRenameModalProps) {
-    const { activeBranchId } = useBranch();
+    const { renameCategory, isRenaming } = useProducts();
     const [newName, setNewName] = useState(currentName);
-    const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
     useEffect(() => {
         if (isOpen) {
             document.body.classList.add('modal-open');
@@ -38,39 +37,17 @@ export default function CategoryRenameModal({ isOpen, onClose, onSuccess, curren
             return;
         }
 
-        setLoading(true);
         setError(null);
 
         try {
-            let query = supabase.from('products').select('id, name');
-            if (activeBranchId) {
-                query = query.eq('branch_id', activeBranchId);
-            }
-            const { data: products, error: fetchError } = await query;
-            if (fetchError) throw fetchError;
-
-            const updates = products?.filter(p => {
-                const parts = p.name.split(' > ');
-                return parts[level - 1] === currentName;
-            }).map(p => {
-                const parts = p.name.split(' > ');
-                parts[level - 1] = trimmedNewName;
-                return { id: p.id, name: parts.join(' > ') };
-            }) || [];
-
-            if (updates.length > 0) {
-                const { error: updateError } = await supabase.from('products').upsert(updates);
-                if (updateError) throw updateError;
-            }
-
+            await renameCategory({ currentName, newName: trimmedNewName, level });
             onSuccess();
             onClose();
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Unknown error');
-        } finally {
-            setLoading(false);
+        } catch (err: any) {
+            setError(err.message || 'Unknown error');
         }
     };
+
 
     return createPortal(
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-md px-4">
@@ -94,9 +71,9 @@ export default function CategoryRenameModal({ isOpen, onClose, onSuccess, curren
                     {error && <div className="text-xs text-red-600 font-bold bg-red-500/10 p-3 rounded-lg border border-red-500/20">Error: {error}</div>}
                     <div className="flex justify-end gap-3 pt-2">
                         <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-text-secondary hover:bg-subtle rounded-xl">Cancel</button>
-                        <button type="submit" disabled={loading || !newName.trim() || newName.trim() === currentName} className="flex items-center gap-2 bg-brand-red text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-red disabled:opacity-50">
-                            {loading ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                            {loading ? 'Renaming...' : 'Rename Globally'}
+                        <button type="submit" disabled={isRenaming || !newName.trim() || newName.trim() === currentName} className="flex items-center gap-2 bg-brand-red text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-red disabled:opacity-50">
+                            {isRenaming ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                            {isRenaming ? 'Renaming...' : 'Rename Globally'}
                         </button>
                     </div>
                 </form>

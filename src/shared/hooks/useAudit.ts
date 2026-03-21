@@ -1,12 +1,12 @@
 import { supabase } from '../lib/supabase';
-import { useBranch } from '../lib/BranchContext';
+import { useBranch } from './useBranch';
 
 export interface AuditLog {
     action: 'CREATE_SALE' | 'UPDATE_SALE' | 'DELETE_SALE' | 'CLOSE_DAY' | 'INV_ADJUST';
     table_name: string;
     record_id: string;
-    old_data?: any;
-    new_data?: any;
+    old_data?: unknown;
+    new_data?: unknown;
 }
 
 export function useAudit() {

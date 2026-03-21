@@ -4,7 +4,7 @@ import { supabase } from '../../../shared/lib/supabase';
 import { Truck, AlertCircle, Plus, Trash2, ShieldCheck, Clock, Search, Building2, Store, ChevronDown, User, X, Tag } from 'lucide-react';
 import { supplierService } from '../../suppliers/services/supplierService';
 import type { Supplier } from '../../suppliers/types/supplier';
-import { useBranch } from '../../../shared/lib/BranchContext';
+import { useBranch } from '../../../shared/hooks/useBranch';
 import { useKeyboardNav } from '../../../shared/hooks/useKeyboardNav';
 import { toast } from 'sonner';
 import { isSmartMatch } from '../../../shared/lib/searchUtils';
@@ -58,15 +58,16 @@ interface PurchaseModalProps {
         supplier: string;
         items: PurchaseItem[];
         status: 'pending' | 'received';
-        payment_status?: 'unpaid' | 'partial' | 'paid';
-        payment_date?: string | null;
-        received_date?: string | null;
+        paymentStatus?: 'unpaid' | 'partial' | 'paid';
+        paymentDate?: string | null;
+        receivedDate?: string | null;
         date?: string;
         isVatEnabled: boolean;
         isDiscountEnabled: boolean;
-        purchase_type?: 'supplier' | 'transfer';
-        supplier_id?: string | null;
-        source_branch_id?: number | null;
+        purchaseType?: 'supplier' | 'transfer';
+        supplierId?: string | null;
+        sourceBranchId?: number | null;
+        transactionLabel?: string | null;
     };
 }
 
@@ -123,7 +124,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
     const dropdownRefs = useRef<(HTMLDivElement | null)[]>([]);
     const searchInputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const quantityInputRefs = useRef<(HTMLInputElement | null)[]>([]);
-    const unitPriceInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+    const unitCostInputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const supplierSearchInputRef = useRef<HTMLInputElement>(null);
     const supplierDropdownRef = useRef<HTMLDivElement>(null);
     const saveButtonRef = useRef<HTMLButtonElement>(null);
@@ -241,26 +242,26 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
             if (editData) {
                 setInvoiceNumber(editData.invoiceNumber);
                 setSupplier(editData.supplier);
-                setPurchaseType(editData.purchase_type || 'supplier');
+                setPurchaseType(editData.purchaseType || 'supplier');
                 setItems(editData.items.map(item => ({
                     ...item,
                     searchQuery: item.name || '',
                     isSearchOpen: false
                 })));
                 setStatus(editData.status);
-                setPaymentStatus(editData.payment_status || 'unpaid');
-                setPaymentDate(editData.payment_date || null);
+                setPaymentStatus(editData.paymentStatus || 'unpaid');
+                setPaymentDate(editData.paymentDate || null);
                 setIsVatEnabled(editData.isVatEnabled);
                 setIsDiscountEnabled(editData.isDiscountEnabled);
-                setTransactionLabel((editData as any).transactionLabel || (editData as any).transaction_label || '');
-                setSupplierId(editData.supplier_id || null);
-                setSourceBranchId(editData.source_branch_id || null);
+                setTransactionLabel(editData.transactionLabel || '');
+                setSupplierId(editData.supplierId || null);
+                setSourceBranchId(editData.sourceBranchId || null);
                 setSupplierSearchQuery(editData.supplier || '');
                 // Attempt to find supplier details if editing
-                const s = suppliers.find(sup => sup.id === editData.supplier_id);
+                const s = suppliers.find(sup => sup.id === editData.supplierId);
                 if (s) {
-                    setSupplierVatRegistered((s as any).supplier_vat_registered || false);
-                    setSupplierTin((s as any).supplier_tin || '');
+                    setSupplierVatRegistered(s.supplier_vat_registered || false);
+                    setSupplierTin(s.supplier_tin || '');
                 }
             } else {
                 setInvoiceNumber('PUR-' + Math.random().toString(36).substring(2, 8).toUpperCase());
@@ -431,8 +432,8 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
         setSupplierId(selected.id);
         setSupplierSearchQuery(selected.name);
         setIsSupplierSearchOpen(false);
-        setSupplierVatRegistered((selected as any).supplier_vat_registered || false);
-        setSupplierTin((selected as any).supplier_tin || '');
+        setSupplierVatRegistered(selected.supplier_vat_registered || false);
+        setSupplierTin(selected.supplier_tin || '');
         
         // Focus first product search input after selection
         setTimeout(() => {
@@ -460,7 +461,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
         try {
             if (!invoiceNumber.trim()) throw new Error('Please enter a Reference/Invoice number');
             
-            let currentSupplier = supplier;
+            const currentSupplier = supplier;
             let currentSupplierId = supplierId;
 
             if (purchaseType === 'supplier') {
@@ -548,7 +549,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                     discount_amount: isDiscountEnabled ? (discountAmount * itemRatio) : 0,
                     is_discounted: isDiscountEnabled,
                     date: editData?.date || new Date().toISOString(),
-                    received_date: status === 'received' ? (editData?.received_date || new Date().toISOString()) : null,
+                    received_date: status === 'received' ? (editData?.receivedDate || new Date().toISOString()) : null,
                     purchase_type: purchaseType,
                     source_branch_id: purchaseType === 'transfer' ? sourceBranchId : null,
                     supplier_tin: supplierTin,
@@ -651,7 +652,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                                                              className="w-full text-left px-3 py-2 hover:bg-bg-subtle border-b border-border-muted last:border-0 flex flex-col gap-0.5"
                                                          >
                                                              <span className="text-[10px] font-black text-text-primary uppercase">{s.name}</span>
-                                                             <span className="text-[8px] text-text-secondary uppercase">VAT: {(s as any).supplier_vat_registered ? 'YES' : 'NO'}</span>
+                                                             <span className="text-[8px] text-text-secondary uppercase">VAT: {s.supplier_vat_registered ? 'YES' : 'NO'}</span>
                                                          </button>
                                                      ))}
                                                      {supplierSearchQuery.trim() && !suppliers.find(s => s.name.toLowerCase() === supplierSearchQuery.trim().toLowerCase()) && (
@@ -964,10 +965,10 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                                             <div className="relative">
                                                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[10px]">₱</span>
                                                 <input
-                                                    ref={el => { unitPriceInputRefs.current[index] = el; }}
+                                                    ref={el => { unitCostInputRefs.current[index] = el; }}
                                                     type="number"
                                                     step="0.01"
-                                                    className="w-full bg-bg-surface border border-border-default rounded-lg pl-5 pr-2 py-1.5 text-xs font-data focus:border-brand-red focus:ring-2 focus:ring-brand-red/10 outline-none text-text-primary shadow-inner h-[32px]"
+                                                    className={`w-full bg-bg-surface border ${item.unit_price > (products.find(p => p.id === item.product_id)?.buying_price || 0) * 1.5 ? 'border-amber-400' : 'border-border-default'} rounded-lg pl-5 pr-2 py-1.5 text-xs font-data focus:border-brand-red focus:ring-2 focus:ring-brand-red/10 outline-none text-text-primary shadow-inner h-[32px]`}
                                                     value={item.unit_price}
                                                     onChange={(e) => handleItemChange(index, 'unit_price', parseFloat(e.target.value) || 0)}
                                                     onFocus={(e) => e.target.select()}
@@ -985,27 +986,56 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                                                     }}
                                                 />
                                             </div>
+                                            {item.unit_price > (products.find(p => p.id === item.product_id)?.buying_price || 0) * 2 && (
+                                                <p className="text-[8px] font-black text-amber-500 uppercase mt-1 flex items-center gap-1"><AlertCircle size={8} /> High Cost Alert</p>
+                                            )}
                                         </div>
                                         <div className="flex-[1.5]">
                                             <label className="block text-[9px] font-black text-text-secondary mb-1.5 uppercase tracking-widest">Qty</label>
                                             <input
                                                 ref={el => { quantityInputRefs.current[index] = el; }}
                                                 type="number"
-                                                min="1"
+                                                step="0.25"
+                                                min="0"
                                                 className="w-full bg-bg-surface border border-border-default rounded-lg px-2 py-1.5 text-xs font-data focus:border-brand-red focus:ring-2 focus:ring-brand-red/10 outline-none text-text-primary shadow-inner h-[32px]"
                                                 value={item.quantity}
-                                                onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value) || 0)}
+                                                onChange={(e) => handleItemChange(index, 'quantity', parseFloat(e.target.value) || 0)}
                                                 onFocus={(e) => e.target.select()}
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') {
                                                         e.preventDefault();
-                                                        unitPriceInputRefs.current[index]?.focus();
-                                                        unitPriceInputRefs.current[index]?.select();
+                                                        unitCostInputRefs.current[index]?.focus();
+                                                        unitCostInputRefs.current[index]?.select();
                                                     } else if (e.key === 'Escape') {
                                                         searchInputRefs.current[index]?.focus();
                                                     }
                                                 }}
                                             />
+                                            {item.name?.toLowerCase().includes('elf') && (
+                                                <div className="mt-1.5 p-1.5 bg-brand-red/5 border border-brand-red/10 rounded-lg animate-fade-in group/calc relative">
+                                                    <div className="flex items-center justify-between gap-1">
+                                                        <span className="text-[8px] font-black text-brand-red uppercase tracking-widest leading-none">Cubic Calc</span>
+                                                        <input 
+                                                            type="number" 
+                                                            placeholder="m³"
+                                                            className="w-12 bg-surface border border-border-default rounded px-1 py-0.5 text-[9px] font-data outline-none focus:border-brand-red h-[16px]"
+                                                            onChange={(e) => {
+                                                                const m3 = parseFloat(e.target.value);
+                                                                if (!isNaN(m3)) {
+                                                                    const elf = m3 / 1.6;
+                                                                    const rounded = Math.floor(elf / 0.25) * 0.25;
+                                                                    handleItemChange(index, 'quantity', rounded);
+                                                                }
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="absolute bottom-full left-0 mb-1 opacity-0 group-hover/calc:opacity-100 transition-opacity bg-brand-charcoal text-white text-[8px] p-2 rounded-lg shadow-xl z-20 w-32 pointer-events-none border border-white/10">
+                                                        <p className="font-bold mb-1 uppercase tracking-widest text-brand-red">Formula:</p>
+                                                        <p className="opacity-80">ELF = m³ / 1.6</p>
+                                                        <p className="opacity-80">Rnd: Down to 0.25</p>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="flex-[2.5] text-right min-w-[100px]">
                                             <label className="block text-[9px] font-black text-text-secondary mb-1.5 uppercase tracking-widest">Sub-Total</label>

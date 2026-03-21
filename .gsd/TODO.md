@@ -1,11 +1,16 @@
 # TODO.md
 
 ## Infrastructure
-- [ ] Create `stock_transfers` table schema
-- [ ] Create `notifications` table schema
-- [ ] Set up Supabase real-time triggers
+- [x] Create `stock_transfers` table schema
+- [x] Create `notifications` table schema
+- [x] Set up Supabase real-time triggers
 
 ## UI
-- [ ] Notification modal component
-- [ ] "Request Stock" modal in Inventory
-- [ ] Transfers dashboard (Admin/Owner)
+- [x] Notification modal component
+- [x] "Request Stock" modal in Inventory
+- [x] Transfers dashboard (Admin/Owner)
+
+## Wave 3: Quality & Verification
+- [/] Financial Accuracy: Automated tests for `ReportService.ts`
+- [ ] UI Consistency: Audit modals for centering and scroll-locking
+- [ ] Process: Add ADRs for ReportService and Permission Guards

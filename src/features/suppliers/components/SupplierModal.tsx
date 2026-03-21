@@ -4,7 +4,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { X, Loader2 } from 'lucide-react';
-import { useBranch } from '../../../shared/lib/BranchContext';
+import { useBranch } from '../../../shared/hooks/useBranch';
+import { sanitizeString } from '../../../shared/lib/sanitize';
+
 import type { Supplier, SupplierInsert } from '../../../shared/types';
 
 const supplierSchema = z.object({
@@ -29,7 +31,8 @@ interface SupplierModalProps {
 
 export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isLoading }: SupplierModalProps) {
     const { activeBranchId } = useBranch();
-    const { register, handleSubmit, reset, watch, getValues, formState: { errors } } = useForm<SupplierFormData>({
+    const { register, handleSubmit, reset, watch, getValues, formState: { errors, isDirty } } = useForm<SupplierFormData>({
+
         resolver: zodResolver(supplierSchema),
         defaultValues: {
             name: '',
@@ -45,6 +48,28 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
     const watchedVat = watch('supplier_vat_registered');
 
     useEffect(() => {
+        if (isOpen) {
+            document.body.classList.add('modal-open');
+        } else {
+            document.body.classList.remove('modal-open');
+        }
+        return () => {
+            document.body.classList.remove('modal-open');
+        };
+    }, [isOpen]);
+
+    const handleSafeClose = () => {
+        if (isDirty) {
+            if (window.confirm('You have unsaved changes. Are you sure you want to close?')) {
+                onClose();
+            }
+        } else {
+            onClose();
+        }
+    };
+
+
+    useEffect(() => {
         if (supplier) {
             reset({
                 name: supplier.name,
@@ -52,8 +77,8 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                 phone: supplier.phone || '',
                 email: supplier.email || '',
                 address: supplier.address || '',
-                supplier_tin: (supplier as any).supplier_tin || '',
-                supplier_vat_registered: (supplier as any).supplier_vat_registered || false,
+                supplier_tin: supplier.supplier_tin || '',
+                supplier_vat_registered: supplier.supplier_vat_registered || false,
             });
         } else {
             reset({
@@ -70,17 +95,16 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
 
     const handleFormSubmit = (data: SupplierFormData) => {
         const formattedData: SupplierInsert = {
-            name: data.name,
-            contact_person: data.contact_person || null,
-            phone: data.phone || null,
-            email: data.email || null,
-            address: data.address || null,
+            name: sanitizeString(data.name),
+            contact_person: sanitizeString(data.contact_person) || null,
+            phone: sanitizeString(data.phone) || null,
+            email: sanitizeString(data.email) || null,
+            address: sanitizeString(data.address) || null,
             branch_id: supplier?.branch_id || activeBranchId,
-            ...({
-                supplier_tin: data.supplier_tin || null,
-                supplier_vat_registered: data.supplier_vat_registered,
-            } as any)
+            supplier_tin: sanitizeString(data.supplier_tin) || null,
+            supplier_vat_registered: data.supplier_vat_registered,
         };
+
         onSubmit(formattedData);
     };
 
@@ -98,10 +122,11 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                             Supplier Details & Contact Information
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-2.5 rounded-2xl hover:bg-surface hover:shadow-lg transition-all text-slate-400 hover:text-brand-red active:scale-90">
+                    <button onClick={handleSafeClose} className="p-2.5 rounded-2xl hover:bg-surface hover:shadow-lg transition-all text-slate-400 hover:text-brand-red active:scale-90">
                         <X size={20} />
                     </button>
                 </div>
+
 
                 <form onSubmit={handleSubmit(handleFormSubmit)} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto scrollbar-hide">
                     <div className="grid grid-cols-1 gap-6">
@@ -180,7 +205,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                         </div>
                     </div>
 
-                    <div className="p-6 bg-slate-50 border-t border-slate-100 mt-auto">
+                    <div className="p-6 bg-slate-50 border-t border-slate-100 mt-auto sticky bottom-0 z-10">
                         <button
                             type="submit"
                             disabled={isLoading}
@@ -196,6 +221,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                             )}
                         </button>
                     </div>
+
                 </form>
             </div>
         </div>,

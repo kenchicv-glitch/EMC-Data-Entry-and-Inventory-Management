@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import type { Product } from './types/product';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../shared/lib/supabase';
 import { useAuth } from '../../shared/hooks/useAuth';
@@ -9,18 +10,6 @@ import {
 } from 'lucide-react';
 import ProductModal from './components/ProductModal';
 
-interface Product {
-    id: string;
-    name: string;
-    stock_available: number;
-    stock_reserved: number;
-    stock_damaged: number;
-    low_stock_threshold?: number;
-    selling_price?: number;
-    buying_price?: number;
-    unit?: string;
-    created_at: string;
-}
 
 export default function BranchInventoryDetail() {
     const { branchId } = useParams();
@@ -35,9 +24,9 @@ export default function BranchInventoryDetail() {
     
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-    const [initialModalData, setInitialModalData] = useState<any>();
+    const [initialModalData, setInitialModalData] = useState<{ l1?: string; l2?: string; l3?: string; branch_id?: string } | undefined>();
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         if (!branchId) return;
         setLoading(true);
         try {
@@ -58,9 +47,11 @@ export default function BranchInventoryDetail() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [branchId]);
 
-    useEffect(() => { fetchData(); }, [branchId]);
+    useEffect(() => { 
+        fetchData(); 
+    }, [fetchData]);
 
     const naturalSort = (a: string, b: string) => {
         return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -79,6 +70,7 @@ export default function BranchInventoryDetail() {
         if (m.includes('STEEL')) return '#1E8449';
         if (m.includes('ELECTRICAL')) return '#7C3AED';
         if (m.includes('ROOFING')) return '#B45309';
+        if (m.includes('BOYSEN')) return '#F59E0B';
         return '#EF4444'; // Brand Red default
     };
 
@@ -92,7 +84,7 @@ export default function BranchInventoryDetail() {
 
         setLoading(true);
         try {
-            let query = supabase.from('products').delete().eq('branch_id', branchId);
+            const query = supabase.from('products').delete().eq('branch_id', branchId);
             
             let pattern = '';
             if (filter.subCat) pattern = `${filter.master} > ${filter.category} > ${filter.subCat} > %`;
@@ -112,7 +104,11 @@ export default function BranchInventoryDetail() {
     };
 
     const filtered = products.filter(p => {
-        const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const searchTerms = searchTerm.toLowerCase().split(' ').filter(Boolean);
+        const matchesSearch = searchTerms.every(term => 
+            p.name.toLowerCase().includes(term) || 
+            (p.brand?.toLowerCase().includes(term) ?? false)
+        );
         const category = p.name.split(' > ')[0] || 'Uncategorized';
         const matchesCategory = categoryFilter === 'All' || category === categoryFilter;
         return matchesSearch && matchesCategory;
@@ -347,7 +343,7 @@ export default function BranchInventoryDetail() {
                                                                                                         </button>
                                                                                                         {role === 'owner' && (
                                                                                                             <button 
-                                                                                                                onClick={() => handleDelete(p.id)}
+                                                                                                                onClick={() => handleDelete(p.id || '')}
                                                                                                                 className="p-2 rounded-xl text-text-muted hover:text-brand-red hover:bg-brand-red/10 transition-all"
                                                                                                             >
                                                                                                                 <Trash2 size={14} />
@@ -381,7 +377,7 @@ export default function BranchInventoryDetail() {
                 isOpen={isModalOpen} 
                 onClose={() => { setIsModalOpen(false); setInitialModalData(undefined); }} 
                 onSuccess={fetchData} 
-                product={selectedProduct} 
+                product={selectedProduct as any} 
                 role={role} 
                 initialData={{ ...initialModalData, branch_id: branchId }} 
             />

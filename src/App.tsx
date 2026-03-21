@@ -1,35 +1,41 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './shared/lib/queryClient';
 import { AuthProvider } from './shared/lib/AuthContext';
-import { WorkspaceProvider, useWorkspace } from './shared/lib/WorkspaceContext';
+import { WorkspaceProvider } from './shared/lib/WorkspaceContext';
+import { useWorkspace } from './shared/hooks/useWorkspace';
 import { BranchProvider } from './shared/lib/BranchContext';
 import Login from './features/auth/Login';
 import Home from './features/home/Home';
 import Layout from './shared/components/Layout';
 import { Toaster } from 'sonner';
 import { useTheme } from './shared/hooks/useTheme';
-import Dashboard from './features/dashboard/Dashboard';
-import Sales from './features/sales/Sales';
-import Purchases from './features/purchases/Purchases';
-import Inventory from './features/inventory/Inventory';
-import Returns from './features/purchases/Returns';
-import CustomerRefunds from './features/sales/CustomerRefunds';
-import AdminPricelist from './features/inventory/AdminPricelist';
-import Expenses from './features/expenses/Expenses';
-import DailySalesSummary from './features/dashboard/DailySalesSummary';
-import DailyInventorySummary from './features/inventory/DailyInventorySummary';
-import ProfitAnalysis from './features/dashboard/ProfitAnalysis';
-import Settings from './features/auth/Settings';
-import Suppliers from './features/suppliers/Suppliers';
-import Customers from './features/customers/Customers';
-import ExpressSales from './features/sales/ExpressSales';
-import TaxDashboard from './features/reports/TaxDashboard';
-import AdminCommandCenter from './features/dashboard/AdminCommandCenter';
-import BranchInventory from './features/inventory/BranchInventory';
-import BranchInventoryDetail from './features/inventory/BranchInventoryDetail';
+
+// Lazy load major features
+const Dashboard = lazy(() => import('./features/dashboard/Dashboard'));
+const Sales = lazy(() => import('./features/sales/Sales'));
+const Purchases = lazy(() => import('./features/purchases/Purchases'));
+const Inventory = lazy(() => import('./features/inventory/Inventory'));
+const Returns = lazy(() => import('./features/purchases/Returns'));
+const CustomerRefunds = lazy(() => import('./features/sales/CustomerRefunds'));
+const AdminPricelist = lazy(() => import('./features/inventory/AdminPricelist'));
+const Expenses = lazy(() => import('./features/expenses/Expenses'));
+const DailySalesSummary = lazy(() => import('./features/dashboard/DailySalesSummary'));
+const DailyInventorySummary = lazy(() => import('./features/inventory/DailyInventorySummary'));
+const ProfitAnalysis = lazy(() => import('./features/dashboard/ProfitAnalysis'));
+const Settings = lazy(() => import('./features/auth/Settings'));
+const Suppliers = lazy(() => import('./features/suppliers/Suppliers'));
+const Customers = lazy(() => import('./features/customers/Customers'));
+const ExpressSales = lazy(() => import('./features/sales/ExpressSales'));
+const TaxDashboard = lazy(() => import('./features/reports/TaxDashboard'));
+const AdminCommandCenter = lazy(() => import('./features/dashboard/AdminCommandCenter'));
+const BranchInventory = lazy(() => import('./features/inventory/BranchInventory'));
+const BranchInventoryDetail = lazy(() => import('./features/inventory/BranchInventoryDetail'));
+const Transfers = lazy(() => import('./features/transfers/Transfers'));
 
 import { useAuth } from './shared/hooks/useAuth';
+import { usePermissions } from './shared/hooks/usePermissions';
 
 function EncoderGuard({ children }: { children: React.ReactNode }) {
     const { user, loading } = useAuth();
@@ -39,10 +45,11 @@ function EncoderGuard({ children }: { children: React.ReactNode }) {
 }
 
 function OwnerGuard({ children }: { children: React.ReactNode }) {
-    const { user, role, loading } = useAuth();
+    const { user, loading } = useAuth();
+    const { canAccessMaster } = usePermissions();
     if (loading) return null;
     if (!user) return <Navigate to="/login" replace />;
-    if (role !== 'owner') return <Navigate to="/" replace />;
+    if (!canAccessMaster) return <Navigate to="/" replace />;
     return <>{children}</>;
 }
 
@@ -77,6 +84,7 @@ function AppRoutes() {
                 <Route path="/expenses" element={<Expenses />} />
                 <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/customers" element={<Customers />} />
+                <Route path="/transfers" element={<Transfers />} />
                 <Route path="/summary" element={<DailySalesSummary />} />
                 <Route path="/tax-dashboard" element={<TaxDashboard />} />
                 <Route path="/inventory-summary" element={<DailyInventorySummary />} />
@@ -111,8 +119,14 @@ function AppContent() {
 
     return (
         <>
-            <AppRoutes />
-            <Toaster richColors position="top-right" theme={theme as 'light' | 'dark'} />
+            <Suspense fallback={
+                <div className="flex h-screen items-center justify-center bg-bg-base font-black text-brand-red animate-pulse">
+                    LOADING...
+                </div>
+            }>
+                <AppRoutes />
+            </Suspense>
+            <Toaster richColors position="top-center" theme={theme as 'light' | 'dark'} />
         </>
     );
 }

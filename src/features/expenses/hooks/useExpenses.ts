@@ -1,19 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { expenseService } from '../services/expenseService';
 import type { Expense } from '../../../shared/types';
+import { useBranch } from '../../../shared/hooks/useBranch';
+import { queryKeys } from '../../../shared/lib/queryKeys';
 
 export const useExpenses = () => {
     const queryClient = useQueryClient();
+    const { activeBranchId } = useBranch();
 
     const expensesQuery = useQuery({
-        queryKey: ['expenses'],
-        queryFn: expenseService.getAll,
+        queryKey: queryKeys.expenses.list(activeBranchId),
+        queryFn: () => expenseService.getAll(activeBranchId),
     });
 
     const createExpenseMutation = useMutation({
         mutationFn: (newExpense: Omit<Expense, 'id'>) => expenseService.create(newExpense),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['expenses'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all });
         },
     });
 
@@ -21,14 +24,14 @@ export const useExpenses = () => {
         mutationFn: ({ id, expense }: { id: string; expense: Partial<Omit<Expense, 'id'>> }) =>
             expenseService.update(id, expense),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['expenses'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all });
         },
     });
 
     const deleteExpenseMutation = useMutation({
         mutationFn: (id: string) => expenseService.delete(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['expenses'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all });
         },
     });
 

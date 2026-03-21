@@ -5,5 +5,6 @@ export interface Expense {
     amount: number;
     date: string | null;
     invoice_number: string | null;
+    branch_id: string;
     user_id: string | null;
 }

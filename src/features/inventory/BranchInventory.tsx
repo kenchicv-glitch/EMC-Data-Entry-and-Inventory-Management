@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../shared/lib/supabase';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 import { 
     Building2, Search, Trash2, 
     ArrowRight, PackageSearch,
-    AlertCircle, ChevronDown, Filter
+    AlertCircle, ChevronDown, Filter, X
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -33,23 +33,60 @@ export default function BranchInventory() {
     const [masterFilter, setMasterFilter] = useState('All');
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
+    const CANONICAL_CATEGORIES = [
+        'STEEL', 'PLYWOOD', 'ELECTRICALS', 'ROOFING', 'LUMBER',
+        'PIPES AND FITTINGS', 'HARDWARE AND FASTENERS',
+        'CEMENT AND AGGREGATES', 'DOORS AND FIXTURES', 'PAINTS AND FINISHES',
+        'BOYSEN'
+    ];
+
     const naturalSort = (a: string, b: string) => {
         return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
     };
 
     const getMasterColor = (master: string) => {
         const m = master.toUpperCase();
-        if (m.includes('PLYWOOD')) return '#0369A1';
         if (m.includes('STEEL')) return '#1E8449';
-        if (m.includes('ELECTRICAL')) return '#7C3AED';
+        if (m.includes('PLYWOOD')) return '#0369A1';
+        if (m.includes('ELECTRICALS')) return '#7C3AED';
         if (m.includes('ROOFING')) return '#B45309';
+        if (m.includes('LUMBER')) return '#8B4513';
+        if (m.includes('PIPES AND FITTINGS')) return '#2563EB';
+        if (m.includes('HARDWARE AND FASTENERS')) return '#4B5563';
+        if (m.includes('CEMENT AND AGGREGATES')) return '#52525B';
+        if (m.includes('DOORS AND FIXTURES')) return '#92400E';
+        if (m.includes('PAINTS AND FINISHES')) return '#DB2777';
+        if (m.includes('BOYSEN')) return '#F59E0B';
         return '#EF4444'; // Brand Red default
     };
 
     const toggleCategory = (cat: string) => {
         const newExpanded = new Set(expandedCategories);
-        if (newExpanded.has(cat)) newExpanded.delete(cat);
-        else newExpanded.add(cat);
+        if (newExpanded.has(cat)) {
+            newExpanded.delete(cat);
+        } else {
+            newExpanded.add(cat);
+            // AUTO-EXPAND recursively for all children (Categories and Sub-categories)
+            const parts = cat.split(' > ');
+            if (parts.length === 1) { // Master level
+                const categories = groupedProducts[cat] || {};
+                Object.keys(categories).forEach(c => {
+                    const catPath = `${cat} > ${c}`;
+                    newExpanded.add(catPath);
+                    const subCats = categories[c] || {};
+                    Object.keys(subCats).forEach(s => {
+                        if (s !== 'GENERAL') newExpanded.add(`${catPath} > ${s}`);
+                    });
+                });
+            } else if (parts.length === 2) { // Category level
+                const master = parts[0];
+                const category = parts[1];
+                const subCats = groupedProducts[master]?.[category] || {};
+                Object.keys(subCats).forEach(s => {
+                    if (s !== 'GENERAL') newExpanded.add(`${master} > ${category} > ${s}`);
+                });
+            }
+        }
         setExpandedCategories(newExpanded);
     };
 
@@ -165,7 +202,8 @@ export default function BranchInventory() {
 
     const filtered = products.filter(p => {
         const searchTerms = searchTerm.toLowerCase().split(' ').filter(Boolean);
-        const matchesSearch = searchTerms.every(term => p.name.toLowerCase().includes(term));
+        const fullName = `${p.category} ${p.name}`.toLowerCase();
+        const matchesSearch = searchTerms.every(term => fullName.includes(term));
         
         const master = p.name.split(' > ')[0] || 'UNCATEGORIZED';
         const matchesMaster = masterFilter === 'All' || master === masterFilter;
@@ -216,52 +254,54 @@ export default function BranchInventory() {
     }
 
     return (
-        <div className="space-y-8 animate-fade-in p-2 md:p-0">
+        <div className="space-y-4 animate-fade-in p-2 md:p-0">
             {/* Header */}
-            <div>
-                <div className="flex items-center gap-3 mb-2">
-                    <div className="bg-brand-red/10 p-2.5 rounded-2xl text-brand-red shadow-sm border border-brand-red/10">
-                        <Building2 size={24} />
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="bg-brand-red/10 p-2 rounded-2xl text-brand-red shadow-sm border border-brand-red/10">
+                        <Building2 size={20} />
                     </div>
-                    <h1 className="text-3xl font-black text-text-primary tracking-tight uppercase">Branch Inventory</h1>
+                    <div>
+                        <h1 className="text-2xl font-black text-text-primary tracking-tight uppercase">Branch Inventory</h1>
+                        <p className="text-[10px] text-text-secondary font-bold uppercase tracking-widest">Global Stock Monitoring</p>
+                    </div>
                 </div>
-                <p className="text-sm text-text-secondary font-medium">Cross-branch stock monitoring and global inventory management</p>
             </div>
 
             {/* Branch Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {branchStats.map(branch => (
                     <Link 
                         key={branch.id}
                         to={`/branch-inventory/${branch.id}`}
-                        className="group relative bg-surface border border-border-default rounded-[2.5rem] p-8 hover:border-brand-red/30 transition-all hover:shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden"
+                        className="group relative bg-surface border border-border-default rounded-[2rem] p-5 hover:border-brand-red/30 transition-all hover:shadow-xl overflow-hidden"
                     >
                         <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
-                            <Building2 size={120} />
+                            <Building2 size={80} />
                         </div>
-
-                        <div className="relative flex justify-between items-start mb-6">
+ 
+                        <div className="relative flex justify-between items-start mb-4">
                             <div>
-                                <h3 className="text-2xl font-black text-text-primary tracking-tighter uppercase mb-1 group-hover:text-brand-red transition-colors">{branch.name}</h3>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-text-muted bg-muted px-2 py-0.5 rounded-full">Active Branch</span>
+                                <h3 className="text-xl font-black text-text-primary tracking-tighter uppercase mb-0.5 group-hover:text-brand-red transition-colors">{branch.name}</h3>
+                                <span className="text-[8px] font-black uppercase tracking-widest text-text-muted bg-muted px-2 py-0.5 rounded-full">Active Branch</span>
                             </div>
-                            <div className="bg-brand-red/10 p-2 rounded-xl text-brand-red group-hover:scale-110 transition-transform">
-                                <ArrowRight size={18} />
+                            <div className="bg-brand-red/10 p-1.5 rounded-xl text-brand-red group-hover:translate-x-1 transition-transform">
+                                <ArrowRight size={16} />
                             </div>
                         </div>
-
-                        <div className="grid grid-cols-3 gap-4 border-t border-border-default pt-6">
+ 
+                        <div className="grid grid-cols-3 gap-2 border-t border-border-default pt-4">
                             <div>
-                                <p className="text-[9px] font-black text-text-muted uppercase tracking-widest mb-1">SKUs</p>
-                                <p className="text-lg font-black text-text-primary font-data">{branch.skuCount}</p>
+                                <p className="text-[8px] font-black text-text-muted uppercase tracking-widest mb-0.5">SKUs</p>
+                                <p className="text-base font-black text-text-primary font-data">{branch.skuCount}</p>
                             </div>
                             <div>
-                                <p className="text-[9px] font-black text-text-muted uppercase tracking-widest mb-1">Total Stock</p>
-                                <p className="text-lg font-black text-text-primary font-data">{branch.totalStock}</p>
+                                <p className="text-[8px] font-black text-text-muted uppercase tracking-widest mb-0.5">Stock</p>
+                                <p className="text-base font-black text-text-primary font-data">{branch.totalStock}</p>
                             </div>
                             <div>
-                                <p className="text-[9px] font-black text-text-muted uppercase tracking-widest mb-1">Est. Value</p>
-                                <p className="text-lg font-black text-text-primary font-data">₱{branch.value.toLocaleString()}</p>
+                                <p className="text-[8px] font-black text-text-muted uppercase tracking-widest mb-0.5">Value</p>
+                                <p className="text-base font-black text-text-primary font-data">₱{branch.value.toLocaleString()}</p>
                             </div>
                         </div>
                     </Link>
@@ -269,78 +309,98 @@ export default function BranchInventory() {
             </div>
 
             {/* Consolidated Stock Table */}
-            <div className="bg-surface border border-border-default rounded-[2.5rem] shadow-sm overflow-hidden min-h-[600px]">
-                <div className="px-8 py-6 border-b border-border-default flex flex-col md:flex-row md:items-center justify-between gap-4 bg-subtle/30">
+            <div className="bg-surface border border-border-default rounded-[2rem] shadow-sm overflow-hidden min-h-[500px]">
+                <div className="px-6 py-4 border-b border-border-default flex flex-col md:flex-row md:items-center justify-between gap-3 bg-subtle/30">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-text-primary text-text-inverse rounded-xl">
-                            <PackageSearch size={20} />
+                            <PackageSearch size={18} />
                         </div>
                         <div>
-                            <h2 className="text-xl font-black text-text-primary tracking-tighter uppercase leading-none">Consolidated Stock</h2>
-                            <p className="text-[10px] font-bold text-text-secondary mt-1 uppercase tracking-widest">Global Item Availability Filter</p>
+                            <h2 className="text-lg font-black text-text-primary tracking-tighter uppercase leading-none">Consolidated Stock</h2>
+                            <p className="text-[9px] font-bold text-text-secondary mt-1 uppercase tracking-widest">Global Item Filter</p>
                         </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
-                        <div className="flex items-center gap-2 bg-surface px-4 py-2.5 rounded-2xl border-2 border-border-default shadow-sm min-w-[200px] hover:border-brand-red/30 transition-all">
-                            <Filter size={16} className="text-text-muted" />
+                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+                        <div className="flex items-center gap-2 bg-surface px-4 py-2 rounded-xl border-2 border-border-default shadow-sm min-w-[200px] hover:border-brand-red/30 focus-within:border-brand-red transition-all">
+                            <Filter size={14} className="text-text-muted" />
                             <select 
                                 value={masterFilter}
-                                onChange={(e) => setMasterFilter(e.target.value)}
-                                className="bg-transparent text-[11px] font-black tracking-widest outline-none uppercase text-text-primary w-full cursor-pointer"
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setMasterFilter(val);
+                                    if (val === 'All') {
+                                        setExpandedCategories(new Set());
+                                    }
+                                }}
+                                className="bg-transparent text-[11px] font-black tracking-widest outline-none border-none ring-0 focus:ring-0 uppercase text-text-primary w-full cursor-pointer appearance-none"
                             >
                                 <option value="All">ALL MASTER CATEGORIES</option>
-                                {Array.from(new Set(products.map(p => p.name.split(' > ')[0]))).filter(Boolean).sort(naturalSort).map(cat => (
+                                {CANONICAL_CATEGORIES.sort(naturalSort).map(cat => (
                                     <option key={cat} value={cat}>{cat}</option>
                                 ))}
                             </select>
+                            <ChevronDown size={14} className="text-text-muted transition-transform ml-auto" />
                         </div>
 
-                        <div className="relative group min-w-[300px] flex-1 sm:flex-initial">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-brand-red transition-colors" size={18} />
+                        <div className="relative group min-w-[250px] flex-1 sm:flex-initial">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-brand-red transition-colors" size={16} />
                             <input 
                                 type="text" 
                                 placeholder="SEARCH GLOBAL STOCK..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-surface border-2 border-border-default hover:border-brand-red/30 focus:border-brand-red rounded-2xl pl-12 pr-6 py-3 text-xs font-black tracking-widest outline-none transition-all shadow-sm"
+                                className="w-full bg-surface border-2 border-border-default hover:border-brand-red/30 focus:border-brand-red rounded-xl pl-10 pr-10 py-2 text-[10px] font-black tracking-widest outline-none transition-all shadow-sm focus:ring-0"
                             />
+                            {searchTerm && (
+                                <button
+                                    onClick={() => {
+                                        setSearchTerm('');
+                                        if (masterFilter === 'All') {
+                                            setExpandedCategories(new Set());
+                                        }
+                                    }}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted hover:text-brand-red transition-colors"
+                                >
+                                    <X size={16} />
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
 
-                <div className="p-8 space-y-8 pb-32">
-                    {Object.keys(groupedProducts).length === 0 ? (
-                        <div className="bg-subtle/20 py-20 rounded-[2.5rem] text-center border-2 border-dashed border-border-default">
+                <div className="p-4 space-y-4 pb-24">
+                    {Object.keys(groupedProducts).length === 0 && masterFilter === 'All' ? (
+                        <div className="bg-subtle/20 py-20 rounded-[2rem] text-center border-2 border-dashed border-border-default">
                             <div className="flex flex-col items-center gap-4">
                                 <AlertCircle size={48} className="text-text-muted/30" />
                                 <p className="text-xl font-black text-text-muted uppercase tracking-widest">No Products Found</p>
                             </div>
                         </div>
                     ) : (
-                        Object.keys(groupedProducts).sort(naturalSort).map(master => {
-                            const categories = groupedProducts[master];
+                        (masterFilter === 'All' ? CANONICAL_CATEGORIES.sort(naturalSort) : [masterFilter]).map(master => {
+                            const categories = groupedProducts[master] || {};
                             const isMasterExpanded = expandedCategories.has(master);
                             const mColor = getMasterColor(master);
                             
                             return (
-                                <div key={master} className="space-y-4 animate-slide-up">
+                                <div key={master} className="space-y-3 animate-slide-up">
                                     <div 
-                                        className="flex items-center justify-between bg-brand-red/5 px-6 py-4 rounded-3xl border-l-8 cursor-pointer group/master transition-all hover:bg-brand-red/[0.08]" 
+                                        className="flex items-center justify-between bg-brand-red/5 px-5 py-3 rounded-2xl border-l-4 cursor-pointer group/master transition-all hover:bg-brand-red/[0.08]" 
                                         style={{ borderLeftColor: mColor }}
                                         onClick={() => toggleCategory(master)}
                                     >
                                         <div className="flex items-center gap-4">
-                                            <h2 className="text-2xl font-black text-text-primary tracking-tighter uppercase" style={{ color: mColor }}>{master}</h2>
-                                            <span className="text-[10px] font-black bg-white/50 px-3 py-1 rounded-full text-text-muted border border-border-default uppercase tracking-widest">
+                                            <h2 className="text-xl font-black text-text-primary tracking-tighter uppercase" style={{ color: mColor }}>{master}</h2>
+                                            <span className="text-[9px] font-black bg-white/50 px-2 py-0.5 rounded-full text-text-muted border border-border-default uppercase tracking-widest">
                                                 {Object.values(categories).reduce((acc, cat) => acc + Object.values(cat).reduce((acc2, items) => acc2 + items.length, 0), 0)} SKUs
                                             </span>
                                         </div>
-                                        <ChevronDown size={24} className={`text-text-muted transition-transform duration-300 ${isMasterExpanded ? 'rotate-180' : ''}`} />
+                                        <ChevronDown size={20} className={`text-text-muted transition-transform duration-300 ${isMasterExpanded ? 'rotate-180' : ''}`} />
                                     </div>
                                     
                                     {isMasterExpanded && (
-                                        <div className="space-y-8 ml-6 border-l-2 border-border-default/50 pl-8 pb-4">
+                                        <div className="space-y-4 ml-4 border-l-2 border-border-default/50 pl-4 pb-2">
                                             {Object.keys(categories).sort(naturalSort).map(catName => {
                                                 const subCats = categories[catName];
                                                 const isCatExpanded = expandedCategories.has(`${master} > ${catName}`);
@@ -358,22 +418,22 @@ export default function BranchInventory() {
                                                         </div>
 
                                                         {isCatExpanded && (
-                                                            <div className="grid grid-cols-1 gap-6">
+                                                            <div className="grid grid-cols-1 gap-4">
                                                                 {Object.keys(subCats).sort(naturalSort).map(subName => {
                                                                     const items = subCats[subName];
                                                                     const isSubExpanded = expandedCategories.has(`${master} > ${catName} > ${subName}`);
                                                                     
                                                                     return (
-                                                                        <div key={subName} className="bg-surface rounded-[2rem] border border-border-default overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                                                                        <div key={subName} className="bg-surface rounded-2xl border border-border-default overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                                                                             <div 
                                                                                 onClick={() => toggleCategory(`${master} > ${catName} > ${subName}`)} 
-                                                                                className="px-6 py-3 bg-subtle/30 flex items-center justify-between cursor-pointer hover:bg-subtle/50 transition-colors group/sub"
+                                                                                className="px-5 py-2.5 bg-subtle/30 flex items-center justify-between cursor-pointer hover:bg-subtle/50 transition-colors group/sub"
                                                                             >
                                                                                 <div className="flex items-center gap-3">
-                                                                                    <h4 className="text-xs font-black text-text-secondary uppercase tracking-widest">{subName}</h4>
-                                                                                    <span className="text-[10px] font-bold text-text-muted bg-white/50 px-2 py-0.5 rounded-full border border-border-default">{items.length} units</span>
+                                                                                    <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest">{subName}</h4>
+                                                                                    <span className="text-[9px] font-bold text-text-muted bg-white/50 px-2 py-0.5 rounded-full border border-border-default">{items.length} units</span>
                                                                                 </div>
-                                                                                <ChevronDown size={18} className={`text-text-muted transition-transform duration-300 ${isSubExpanded ? 'rotate-180' : ''}`} />
+                                                                                <ChevronDown size={14} className={`text-text-muted transition-transform duration-300 ${isSubExpanded ? 'rotate-180' : ''}`} />
                                                                             </div>
                                                                             
                                                                             {isSubExpanded && (
@@ -381,42 +441,42 @@ export default function BranchInventory() {
                                                                                     <table className="min-w-full">
                                                                                         <thead>
                                                                                             <tr className="bg-subtle/10 border-b border-border-default">
-                                                                                                <th className="px-8 py-3 text-left text-[9px] font-black uppercase tracking-widest text-text-muted">Item Description</th>
-                                                                                                <th className="px-8 py-3 text-center text-[9px] font-black uppercase tracking-widest text-text-muted border-l border-border-default bg-emerald-500/5">Total Σ</th>
+                                                                                                <th className="px-6 py-2 text-left text-[8px] font-black uppercase tracking-widest text-text-muted">Item Description</th>
+                                                                                                <th className="px-6 py-2 text-center text-[8px] font-black uppercase tracking-widest text-text-muted border-l border-border-default bg-emerald-500/5">Total Σ</th>
                                                                                                 {branches.map(b => (
-                                                                                                    <th key={b.id} className="px-6 py-3 text-center text-[9px] font-black uppercase tracking-widest text-text-muted border-l border-border-default">{b.name}</th>
+                                                                                                    <th key={b.id} className="px-4 py-2 text-center text-[8px] font-black uppercase tracking-widest text-text-muted border-l border-border-default">{b.name}</th>
                                                                                                 ))}
-                                                                                                <th className="px-6 py-3 text-right text-[9px] font-black uppercase tracking-widest text-text-muted border-l border-border-default">Actions</th>
+                                                                                                <th className="px-4 py-2 text-right text-[8px] font-black uppercase tracking-widest text-text-muted border-l border-border-default">Actions</th>
                                                                                             </tr>
                                                                                         </thead>
                                                                                         <tbody className="divide-y divide-border-default">
                                                                                             {items.map((p, pIdx) => (
                                                                                                 <tr key={p.name} className={`hover:bg-subtle/30 transition-colors group ${pIdx % 2 === 0 ? 'bg-surface' : 'bg-subtle/5'}`}>
-                                                                                                    <td className="px-8 py-4">
-                                                                                                        <span className="text-xs font-black text-text-primary tracking-tight group-hover:text-brand-red transition-colors uppercase">{p.name.split(' > ').slice(-1)[0]}</span>
+                                                                                                    <td className="px-6 py-3">
+                                                                                                        <span className="text-[11px] font-black text-text-primary tracking-tight group-hover:text-brand-red transition-colors uppercase">{p.name.split(' > ').slice(-1)[0]}</span>
                                                                                                     </td>
-                                                                                                    <td className="px-8 py-4 border-l border-border-default bg-emerald-500/[0.02]">
+                                                                                                    <td className="px-6 py-3 border-l border-border-default bg-emerald-500/[0.02]">
                                                                                                         <div className="flex flex-col items-center">
-                                                                                                            <span className="text-sm font-black text-emerald-600 font-data underline decoration-emerald-500/30 underline-offset-4">{p.totalStock}</span>
+                                                                                                            <span className="text-xs font-black text-emerald-600 font-data underline decoration-emerald-500/30 underline-offset-4">{p.totalStock}</span>
                                                                                                             <span className="text-[7px] font-black text-emerald-500 uppercase tracking-tighter">UNITS Σ</span>
                                                                                                         </div>
                                                                                                     </td>
                                                                                                     {branches.map(b => {
                                                                                                         const stock = p.branchStocks[b.id] || 0;
                                                                                                         return (
-                                                                                                            <td key={b.id} className="px-6 py-4 border-l border-border-default text-center">
-                                                                                                                <span className={`text-[13px] font-bold font-data ${stock > 0 ? 'text-text-primary text-sm font-black' : 'text-text-muted/20'}`}>
+                                                                                                            <td key={b.id} className="px-4 py-3 border-l border-border-default text-center">
+                                                                                                                <span className={`text-[12px] font-bold font-data ${stock > 0 ? 'text-text-primary text-xs font-black' : 'text-text-muted/20'}`}>
                                                                                                                     {stock > 0 ? stock : '-'}
                                                                                                                 </span>
                                                                                                             </td>
                                                                                                         );
                                                                                                     })}
-                                                                                                    <td className="px-6 py-4 border-l border-border-default text-right">
+                                                                                                    <td className="px-4 py-3 border-l border-border-default text-right">
                                                                                                         <button 
                                                                                                             onClick={() => handleDeleteProductGlobal(p.name)}
-                                                                                                            className="p-2 rounded-xl text-text-muted/20 hover:text-brand-red hover:bg-brand-red/10 transition-all"
+                                                                                                            className="p-1.5 rounded-lg text-text-muted/20 hover:text-brand-red hover:bg-brand-red/10 transition-all"
                                                                                                         >
-                                                                                                            <Trash2 size={14} />
+                                                                                                            <Trash2 size={12} />
                                                                                                         </button>
                                                                                                     </td>
                                                                                                 </tr>

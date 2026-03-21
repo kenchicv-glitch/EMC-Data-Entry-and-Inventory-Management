@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../../shared/lib/supabase';
 import { X, RotateCcw, Trash2, AlertTriangle, Package } from 'lucide-react';
-import { useBranch } from '../../../shared/lib/BranchContext';
+import { useBranch } from '../../../shared/hooks/useBranch';
 
 interface Product {
     id: string;

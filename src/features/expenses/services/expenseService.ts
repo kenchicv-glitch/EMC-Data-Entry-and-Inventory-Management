@@ -2,12 +2,17 @@ import { supabase } from '../../../shared/lib/supabase';
 import type { Expense } from '../../../shared/types';
 
 export const expenseService = {
-    async getAll(): Promise<Expense[]> {
-        const { data, error } = await supabase
+    async getAll(branchId?: string | null): Promise<Expense[]> {
+        let query = supabase
             .from('expenses')
-            .select('id, category, description, amount, date, invoice_number, user_id')
+            .select('id, category, description, amount, date, invoice_number, branch_id, user_id')
             .order('date', { ascending: false });
 
+        if (branchId) {
+            query = query.eq('branch_id', branchId);
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
         return data || [];
     },
@@ -16,11 +21,11 @@ export const expenseService = {
         const { data, error } = await supabase
             .from('expenses')
             .insert(expense)
-            .select()
+            .select('id, category, description, amount, date, invoice_number, branch_id, user_id')
             .single();
 
         if (error) throw error;
-        return data;
+        return data as Expense;
     },
 
     async update(id: string, expense: Partial<Omit<Expense, 'id'>>): Promise<Expense> {
@@ -28,11 +33,11 @@ export const expenseService = {
             .from('expenses')
             .update(expense)
             .eq('id', id)
-            .select()
+            .select('id, category, description, amount, date, invoice_number, branch_id, user_id')
             .single();
 
         if (error) throw error;
-        return data;
+        return data as Expense;
     },
 
     async delete(id: string): Promise<void> {

@@ -1,26 +1,38 @@
-# Phase 1 Research: Code Quality & Linting Baseline
+# Research: Phase 1 — Financial Logic Refactor
 
-## Automated Checks Output
+## Objective
+Reconcile the "profit bleed" reported by the user and implement a default-exclusive, toggle-inclusive VAT logic for the Profit Analysis dashboard.
 
-### TypeScript Compiler (`tsc --noEmit`)
-- **Status**: Passed (0 errors). The baseline strictly-typed code is fundamentally sound.
+## Findings
 
-### ESLint (`npm run lint`)
-- **Status**: Failed with 104 problems (81 errors, 23 warnings).
+### 1. Current State of `reportService.ts`
+- **Logic**: `calculateProfitMetrics` supports an `includeVat` toggle.
+- **Default**: `includeVat = true` (Revenue = Gross - Discounts).
+- **Profit Calculation**: `Gross Profit = Revenue - COGS`.
+- **The "Bleed"**: If the user is seeing "lower than expected" figures, it might be due to:
+    - `vat_amount` being deducted from `total_price` in the database query before reaching the service (unlikely).
+    - Or, the existing implementation might be subtracting VAT by default in some areas while the user expects Gross margins.
+    - Actually, `calculateProfitMetrics` at line 105: `netRevenue = grossRevenue - totalVAT - totalDiscounts` (VAT sub).
 
-#### Error Categories:
-1. **`@typescript-eslint/no-explicit-any`** (Many instances): Used across dashboard, inventory, purchases, sales, suppliers, and utils. This reveals a tendency to bypass the type system for complex or dynamic API responses.
-2. **`react-hooks/exhaustive-deps`** (Many instances): Missing dependencies or complex expressions in `useEffect`/`useCallback` dependency arrays, specifically around data fetching functions like `fetchData`, `fetchProducts`.
-3. **`react-hooks/set-state-in-effect`** (6 instances): Synchronous `setState` calls inside effects that trigger cascading renders. This is a performance bottleneck.
-   - Files: `Login.tsx`, `Settings.tsx`, `AdminCommandCenter.tsx`, `AdminPricelist.tsx`, `Calendar.tsx`, `BranchContext.tsx`.
-4. **`react-refresh/only-export-components`** (3 instances): Exporting non-component constructs from component files (e.g., in Context files).
-   - Files: `AuthContext.tsx`, `BranchContext.tsx`, `WorkspaceContext.tsx`.
-5. **`prefer-const`** (4 instances): Variables declared with `let` that are never reassigned.
-6. **`react-hooks/incompatible-library`** (1 instance): `useForm().watch()` used in a way that breaks memoization inside `SupplierModal.tsx`.
+### 2. User Requirement Re-Analysis
+- **Desired Result**: SRP (7650) - COGS (6375) = 1275 Gross Profit.
+- **User Preference**: "at default do not include the vat, instead put a toggle ... for vat inclusive."
+- **Interpretation**: 
+    - **Default (VAT Exclusive)**: Revenue = Net Sales (excl. VAT). Profit = Net Sales - COGS. (This will be lower than 1275).
+    - **Toggled (VAT Inclusive)**: Revenue = Gross Sales (incl. VAT). Profit = Gross Sales - COGS. (This will be 1275).
+- **Current Issue**: The user feels the system is "bleeding" profit because it currently defaults (or is stuck) in the exclusive view/subtraction mode in their perspective.
 
-### Actionable Strategy for Phase 1
-Due to the aggressive atomicity requirement (2-3 tasks max per plan), fixing 104 errors should be broken down by error category:
+### 3. Missing Data Points
+- **Returns & Refunds**: `calculateProfitMetrics` only takes `sales` and `expenses`. It does not account for `returns` or `refunds` which would lower revenue and profit.
+- **Service Parity**: `calculateCategoryProfit` and `calculateProfitMetrics` must use identical logic.
 
-- **Wave 1, Plan 1**: Structural React Errors (Fix Context exports & `setState` in effects).
-- **Wave 1, Plan 2**: React Hooks Warnings (Fix exhaustive-deps, prefer-const, and incompatible library).
-- **Wave 2, Plan 3**: Strict Typing (Resolve all `any` types by creating or utilizing proper interfaces).
+## Proposed Logic Update
+1. Change `includeVat` default to `false` in `ReportService`.
+2. Ensure `ProfitAnalysis` state starts as `false`.
+3. Add `returns` and `refunds` to the `useProfitData` hook and passing them to `calculateProfitMetrics`.
+4. Audit `total_price` source to ensure it really matches the 7650/SRP inclusive figure.
+
+## Verification Plan
+1. Mock data with SRP 7650, COGS 6375.
+2. Verify Profit = 1275 when Toggle = ON.
+3. Verify Profit = (7650/1.12) - 6375 when Toggle = OFF.

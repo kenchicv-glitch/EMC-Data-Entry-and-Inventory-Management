@@ -1,97 +1,26 @@
-import { useState, useMemo } from 'react';
-import { supabase } from '../../shared/lib/supabase';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useTaxData } from './hooks/useTaxData';
 import {
     Calculator, Receipt, Download, FileText, TrendingUp,
     ArrowUpRight, ArrowDownRight, Calendar,
     Percent, ShieldCheck, AlertCircle, Loader2
 } from 'lucide-react';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
-import { roundTo2 } from '../../lib/vatUtils';
+import { startOfMonth, endOfMonth } from 'date-fns';
+import { formatCurrency, formatDate } from '../../shared/lib/formatUtils';
 import { exportBIRSalesJournal, exportBIRSummaryWorksheet } from '../../shared/lib/exportUtils';
-import { useBranch } from '../../shared/lib/BranchContext';
 
 /**
  * TaxDashboard: Pre-calculates BIR-required figures (Form 2550M/Q, 1701Q/1702Q)
  */
 export default function TaxDashboard() {
     const [dateRange, setDateRange] = useState({
-        start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-        end: format(endOfMonth(new Date()), 'yyyy-MM-dd')
+        start: formatDate(startOfMonth(new Date()), 'yyyy-MM-dd'),
+        end: formatDate(endOfMonth(new Date()), 'yyyy-MM-dd')
     });
 
-    const { activeBranchId } = useBranch();
+    const { sales, metrics, isLoading } = useTaxData(dateRange);
 
-    // Fetch Sales for the period
-    const { data: sales, isLoading: salesLoading } = useQuery({
-        queryKey: ['tax-sales', dateRange, activeBranchId],
-        queryFn: async () => {
-            let query = supabase
-                .from('sales')
-                .select('*')
-                .gte('date', `${dateRange.start}T00:00:00`)
-                .lte('date', `${dateRange.end}T23:59:59`);
-            
-            if (activeBranchId) {
-                query = query.eq('branch_id', activeBranchId);
-            }
-            
-            const { data, error } = await query;
-            if (error) throw error;
-            return data;
-        }
-    });
-
-    // Fetch Purchases for the period
-    const { data: purchases, isLoading: purchasesLoading } = useQuery({
-        queryKey: ['tax-purchases', dateRange, activeBranchId],
-        queryFn: async () => {
-            let query = supabase
-                .from('purchases')
-                .select('*')
-                .gte('date', `${dateRange.start}T00:00:00`)
-                .lte('date', `${dateRange.end}T23:59:59`);
-            
-            if (activeBranchId) {
-                query = query.eq('branch_id', activeBranchId);
-            }
-
-            const { data, error } = await query;
-            if (error) throw error;
-            return data;
-        }
-    });
-
-    const metrics = useMemo(() => {
-        if (!sales || !purchases) return null;
-
-        const vatableSales = sales.filter(s => s.vat_classification === 'vatable');
-        const exemptSales = sales.filter(s => s.vat_classification === 'exempt');
-        const zeroRatedSales = sales.filter(s => s.vat_classification === 'zero_rated');
-
-        const outputVat = sales.reduce((sum, s) => sum + Number(s.vat_amount || 0), 0);
-        const inputVat = purchases.reduce((sum, p) => sum + Number(p.input_vat_amount || 0), 0);
-
-        const grossSales = sales.reduce((sum, s) => sum + Number(s.total_price || 0), 0);
-        const netSales = sales.reduce((sum, s) => sum + (Number(s.total_price || 0) - Number(s.vat_amount || 0)), 0);
-
-        const grossPurchases = purchases.reduce((sum, p) => sum + Number(p.total_price || 0), 0);
-        const vatPayable = roundTo2(outputVat - inputVat);
-
-        return {
-            vatableSales: vatableSales.reduce((sum, s) => sum + Number(s.total_price || 0), 0),
-            exemptSales: exemptSales.reduce((sum, s) => sum + Number(s.total_price || 0), 0),
-            zeroRatedSales: zeroRatedSales.reduce((sum, s) => sum + Number(s.total_price || 0), 0),
-            outputVat,
-            inputVat,
-            grossSales,
-            netSales,
-            grossPurchases,
-            vatPayable
-        };
-    }, [sales, purchases]);
-
-    if (salesLoading || purchasesLoading) {
+    if (isLoading) {
         return (
             <div className="h-[60vh] flex items-center justify-center">
                 <div className="flex flex-col items-center gap-4">
@@ -157,14 +86,14 @@ export default function TaxDashboard() {
                         <div className="p-6 bg-bg-subtle rounded-2xl border border-border-muted flex flex-col justify-between">
                             <p className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-4">Total Output VAT (Sales)</p>
                             <div className="flex items-end justify-between">
-                                <p className="text-2xl font-black text-text-primary font-data">₱{metrics?.outputVat.toLocaleString()}</p>
+                                <p className="text-2xl font-black text-text-primary font-data">{formatCurrency(metrics?.outputVat)}</p>
                                 <ArrowUpRight className="text-emerald-500" size={24} />
                             </div>
                         </div>
                         <div className="p-6 bg-bg-subtle rounded-2xl border border-border-muted flex flex-col justify-between">
                             <p className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-4">Total Input VAT (Purchases)</p>
                             <div className="flex items-end justify-between">
-                                <p className="text-2xl font-black text-text-primary font-data">₱{metrics?.inputVat.toLocaleString()}</p>
+                                <p className="text-2xl font-black text-text-primary font-data">{formatCurrency(metrics?.inputVat)}</p>
                                 <ArrowDownRight className="text-amber-500" size={24} />
                             </div>
                         </div>
@@ -174,7 +103,7 @@ export default function TaxDashboard() {
                         <div className="absolute top-0 right-0 w-32 h-32 bg-brand-red/20 rounded-full blur-2xl -mr-16 -mt-16" />
                         <div>
                             <p className="text-[10px] font-black text-bg-base/40 uppercase tracking-[0.3em] mb-2">VAT PAYABLE / (REFUNDABLE)</p>
-                            <p className="text-4xl font-black font-data">₱{metrics?.vatPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                            <p className="text-4xl font-black font-data">{formatCurrency(metrics?.vatPayable)}</p>
                         </div>
                         <div className="flex flex-col items-end text-right">
                             <div className="flex items-center gap-2 text-emerald-400 mb-1">
@@ -196,19 +125,19 @@ export default function TaxDashboard() {
                     <div className="space-y-4">
                         <div className="flex justify-between items-center py-2 border-b border-border-muted/50">
                             <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">Gross Sales</span>
-                            <span className="text-sm font-black text-text-primary font-data">₱{metrics?.grossSales.toLocaleString()}</span>
+                            <span className="text-sm font-black text-text-primary font-data">{formatCurrency(metrics?.grossSales)}</span>
                         </div>
                         <div className="flex justify-between items-center py-2 border-b border-border-muted/50 text-emerald-500">
                             <span className="text-[10px] font-black uppercase tracking-widest">VATable Sales (Net)</span>
-                            <span className="text-sm font-black font-data">₱{(roundTo2(metrics?.vatableSales || 0) - (metrics?.outputVat || 0)).toLocaleString()}</span>
+                            <span className="text-sm font-black font-data">{formatCurrency((metrics?.vatableSales || 0) - (metrics?.outputVat || 0))}</span>
                         </div>
                         <div className="flex justify-between items-center py-2 border-b border-border-muted/50 text-amber-500">
                             <span className="text-[10px] font-black uppercase tracking-widest">Exempt Sales</span>
-                            <span className="text-sm font-black font-data">₱{metrics?.exemptSales.toLocaleString()}</span>
+                            <span className="text-sm font-black font-data">{formatCurrency(metrics?.exemptSales)}</span>
                         </div>
                         <div className="flex justify-between items-center py-2 border-b border-border-muted/50 text-blue-500">
                             <span className="text-[10px] font-black uppercase tracking-widest">Zero-Rated Sales</span>
-                            <span className="text-sm font-black font-data">₱{metrics?.zeroRatedSales.toLocaleString()}</span>
+                            <span className="text-sm font-black font-data">{formatCurrency(metrics?.zeroRatedSales)}</span>
                         </div>
                     </div>
 
@@ -247,22 +176,22 @@ export default function TaxDashboard() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-muted">
-                            {sales?.map((sale) => (
-                                <tr key={sale.id} className="hover:bg-bg-subtle transition-all group">
-                                    <td className="px-8 py-4 text-[11px] font-bold text-text-secondary font-data">{format(new Date(sale.date), 'MM/dd/yyyy')}</td>
-                                    <td className="px-8 py-4 text-[11px] font-black text-text-primary uppercase font-data">{sale.or_number || 'N/A'}</td>
-                                    <td className="px-8 py-4">
-                                        <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${sale.vat_classification === 'vatable' ? 'bg-emerald-500/10 text-emerald-500' :
-                                            sale.vat_classification === 'exempt' ? 'bg-purple-500/10 text-purple-600' : 'bg-blue-500/10 text-blue-500'
-                                            }`}>
-                                            {sale.vat_classification}
-                                        </span>
-                                    </td>
-                                    <td className="px-8 py-4 text-right text-[11px] font-bold text-text-primary font-data">₱{Number(sale.total_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                    <td className="px-8 py-4 text-right text-[11px] font-bold text-brand-red font-data">₱{Number(sale.vat_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                    <td className="px-8 py-4 text-right text-[11px] font-black text-text-primary font-data">₱{(Number(sale.total_price) - Number(sale.vat_amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                </tr>
-                            ))}
+                             {sales?.map((sale) => (
+                                 <tr key={sale.id} className="hover:bg-bg-subtle transition-all group">
+                                     <td className="px-8 py-4 text-[11px] font-bold text-text-secondary font-data">{formatDate(sale.date, 'MM/dd/yyyy')}</td>
+                                     <td className="px-8 py-4 text-[11px] font-black text-text-primary uppercase font-data">{sale.or_number || 'N/A'}</td>
+                                     <td className="px-8 py-4">
+                                         <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${sale.vat_classification === 'vatable' ? 'bg-emerald-500/10 text-emerald-500' :
+                                             sale.vat_classification === 'exempt' ? 'bg-purple-500/10 text-purple-600' : 'bg-blue-500/10 text-blue-500'
+                                             }`}>
+                                             {sale.vat_classification}
+                                         </span>
+                                     </td>
+                                     <td className="px-8 py-4 text-right text-[11px] font-bold text-text-primary font-data">{formatCurrency(sale.total_price)}</td>
+                                     <td className="px-8 py-4 text-right text-[11px] font-bold text-brand-red font-data">{formatCurrency(sale.vat_amount)}</td>
+                                     <td className="px-8 py-4 text-right text-[11px] font-black text-text-primary font-data">{formatCurrency(Number(sale.total_price) - Number(sale.vat_amount || 0))}</td>
+                                 </tr>
+                             ))}
                             {(!sales || sales.length === 0) && (
                                 <tr>
                                     <td colSpan={6} className="px-8 py-20 text-center">

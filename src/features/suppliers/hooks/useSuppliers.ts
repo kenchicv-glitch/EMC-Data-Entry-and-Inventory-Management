@@ -2,22 +2,22 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supplierService } from '../services/supplierService';
 import type { SupplierInsert, SupplierUpdate } from '../../../shared/types';
 import { toast } from 'sonner';
-
-import { useBranch } from '../../../shared/lib/BranchContext';
+import { useBranch } from '../../../shared/hooks/useBranch';
+import { queryKeys } from '../../../shared/lib/queryKeys';
 
 export const useSuppliers = () => {
     const queryClient = useQueryClient();
     const { activeBranchId } = useBranch();
 
     const suppliersQuery = useQuery({
-        queryKey: ['suppliers', activeBranchId],
+        queryKey: queryKeys.suppliers.list(activeBranchId),
         queryFn: () => supplierService.getAll(activeBranchId),
     });
 
     const createSupplierMutation = useMutation({
         mutationFn: (newSupplier: SupplierInsert) => supplierService.create(newSupplier),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.suppliers.all });
             toast.success('Supplier created successfully');
         },
         onError: (error: Error) => {
@@ -29,7 +29,7 @@ export const useSuppliers = () => {
         mutationFn: ({ id, updates }: { id: string; updates: SupplierUpdate }) =>
             supplierService.update(id, updates),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.suppliers.all });
             toast.success('Supplier updated successfully');
         },
         onError: (error: Error) => {
@@ -40,7 +40,7 @@ export const useSuppliers = () => {
     const deleteSupplierMutation = useMutation({
         mutationFn: (id: string) => supplierService.delete(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.suppliers.all });
             toast.success('Supplier deleted successfully');
         },
         onError: (error: Error) => {

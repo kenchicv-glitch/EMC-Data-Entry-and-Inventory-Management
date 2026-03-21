@@ -5,16 +5,9 @@ import { format, isSameDay } from 'date-fns';
 import ExpenseModal from './components/ExpenseModal';
 import { useAuth } from '../../shared/hooks/useAuth';
 import Calendar from '../../features/reports/components/Calendar';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 
-interface Expense {
-    id: string;
-    category: 'Salary' | 'Donation' | 'Others';
-    description: string;
-    amount: number;
-    date: string;
-    invoice_number: string;
-}
+import { type Expense } from '../../shared/types';
 
 export default function Expenses() {
     const { role } = useAuth();
@@ -25,7 +18,7 @@ export default function Expenses() {
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState<string>('All');
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-    const [editExpense, setEditExpense] = useState<Expense | null>(null);
+    const [editExpense, setEditExpense] = useState<Expense>();
 
     const fetchExpenses = async (silent = false) => {
         if (!silent) setLoading(true);
@@ -76,17 +69,17 @@ export default function Expenses() {
 
     const filtered = expenses.filter(ex => {
         const matchesSearch =
-            ex.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            ex.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (ex.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (ex.invoice_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             ex.category.toLowerCase().includes(searchTerm.toLowerCase());
 
         const matchesCategory = categoryFilter === 'All' || ex.category === categoryFilter;
-        const matchesDate = isSameDay(new Date(ex.date), selectedDate);
+        const matchesDate = isSameDay(new Date(ex.date || ''), selectedDate);
 
         return matchesSearch && matchesCategory && matchesDate;
     });
 
-    const activeDates = Array.from(new Set(expenses.map(ex => format(new Date(ex.date), 'yyyy-MM-dd'))));
+    const activeDates = Array.from(new Set(expenses.map(ex => format(new Date(ex.date || ''), 'yyyy-MM-dd'))));
     const totalExpenses = filtered.reduce((sum, ex) => sum + ex.amount, 0);
 
     return (
@@ -200,7 +193,7 @@ export default function Expenses() {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-5">
-                                                    <p className="text-[10px] font-black text-text-primary font-data uppercase">{format(new Date(ex.date), 'hh:mm a')}</p>
+                                                    <p className="text-[10px] font-black text-text-primary font-data uppercase">{format(new Date(ex.date || ''), 'hh:mm a')}</p>
                                                 </td>
                                                 <td className="px-6 py-5">
                                                     <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${ex.category === 'Salary' ? 'bg-accent-subtle text-accent' :
@@ -264,7 +257,7 @@ export default function Expenses() {
                 isOpen={isModalOpen}
                 onClose={() => {
                     setIsModalOpen(false);
-                    setEditExpense(null);
+                    setEditExpense(undefined);
                 }}
                 onSuccess={() => fetchExpenses(true)}
                 expense={editExpense}

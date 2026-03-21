@@ -1,213 +1,81 @@
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useEffect, useState, useCallback, Fragment } from 'react';
-import { supabase } from '../../shared/lib/supabase';
+import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useMemo, Fragment } from 'react';
 import {
     Search, ChevronDown, Receipt, ShoppingBag, Download, Filter, Trash2, User, Truck, Clock, CheckCircle2, PackageSearch, RotateCcw, Grid, Tag
 } from 'lucide-react';
-import { format, isSameDay } from 'date-fns';
-import SalesModal from './components/SalesModal';
+import { isSameDay } from 'date-fns';
+import { formatCurrency, formatDate } from '../../shared/lib/formatUtils';
 import Calendar from '../../features/reports/components/Calendar';
 import { useAuth } from '../../shared/hooks/useAuth';
-import { useBranch } from '../../shared/lib/BranchContext';
-
-interface Sale {
-    id: string;
-    transaction_label?: string;
-    product_id: string;
-    quantity: number;
-    unit_price: number;
-    total_price: number;
-    date: string;
-    invoice_number: string;
-    user_id: string;
-    vat_amount: number;
-    discount_amount: number;
-    is_discounted: boolean;
-    is_os?: boolean;
-    full_name: string;
-    customer_name?: string;
-    fulfillment_status?: 'pickup' | 'delivered' | 'out';
-    payment_mode?: string;
-    edited_at?: string;
-    delivery_fee?: number;
-    invoice_type?: string;
-    products: {
-        name: string;
-        brand?: string;
-    };
-}
-
-interface SupabaseSale {
-    id: string;
-    transaction_label?: string;
-    product_id: string;
-    quantity: number;
-    unit_price: number;
-    total_price: number;
-    date: string;
-    invoice_number: string;
-    user_id: string;
-    vat_amount: number;
-    discount_amount: number;
-    is_discounted: boolean;
-    is_os?: boolean;
-    customer_name?: string;
-    fulfillment_status?: 'pickup' | 'delivered' | 'out';
-    payment_mode?: string;
-    edited_at?: string;
-    delivery_fee?: number;
-    invoice_type?: string;
-    products: {
-        name: string;
-        brand?: string;
-    };
-}
-
-interface GroupedSale {
-    invoice_number: string;
-    date: string;
-    full_name: string;
-    customer_name: string;
-    fulfillment_status: 'pickup' | 'delivered' | 'out';
-    payment_mode: string;
-    items: Sale[];
-    is_os: boolean;
-    edited_at: string | null;
-    total_base: number;
-    total_vat: number;
-    total_discount: number;
-    delivery_fee: number;
-    grand_total: number;
-    invoice_type: string;
-    transaction_label: string | null;
-}
-
-interface SalesEditData {
-    invoiceNumber: string;
-    customerName?: string;
-    fulfillmentStatus?: string;
-    paymentMode?: string;
-    items: {
-        product_id: string;
-        quantity: number;
-        unit_price: number;
-        total_price: number;
-        name?: string;
-        brand?: string;
-    }[];
-    isVatEnabled: boolean;
-    isDiscountEnabled: boolean;
-    is_os?: boolean;
-    date?: string;
-    delivery_fee?: number;
-    invoice_type?: string;
-}
+import { useSales } from './hooks/useSales';
+import { useModal } from '../../shared/hooks/useModal';
+import { startOfMonth } from 'date-fns';
+import { type Sale, type GroupedSale } from './types/sale';
 
 export default function Sales() {
     const { role } = useAuth();
     const navigate = useNavigate();
-    const location = useLocation();
-    const [groupedSales, setGroupedSales] = useState<GroupedSale[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editData, setEditData] = useState<SalesEditData | null>(null);
-    const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
+    const { openSalesModal } = useModal();
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+    const { sales, refunds, isLoading: hookLoading, deleteSales, fetchSales } = useSales(startOfMonth(selectedDate).toISOString());
+
+    const [searchTerm, setSearchTerm] = useState('');
+    const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
     const [filterType, setFilterType] = useState<'all' | 'standard' | 'os' | 'discounted' | 'refunded'>('all');
-    const [refundedInvoices, setRefundedInvoices] = useState<Set<string>>(new Set());
     const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-    const { activeBranchId } = useBranch();
-    const fetchSales = useCallback(async (silent = false) => {
-        if (!silent) setLoading(true);
+    const refundedInvoices = useMemo(() => 
+        new Set(refunds.map(r => r.invoice_number).filter(Boolean)),
+    [refunds]);
 
-        let salesQuery = supabase.from('sales').select(`*, products(name, brand)`).order('date', { ascending: false });
-        let refundsQuery = supabase.from('customer_refunds').select('invoice_number');
+    const groupedSales = useMemo(() => {
+        const groups: { [key: string]: GroupedSale } = {};
+        sales.forEach(sale => {
+            const key = sale.invoice_number;
+            if (!key) return;
+            if (!groups[key]) {
+                groups[key] = {
+                    invoice_number: key,
+                    date: sale.date,
+                    full_name: 'Staff',
+                    customer_name: sale.customer_name || 'Walk-in Customer',
+                    fulfillment_status: sale.fulfillment_status || 'pickup',
+                    payment_mode: sale.payment_mode || 'cash',
+                    is_os: sale.is_os || false,
+                    edited_at: sale.edited_at || null,
+                    items: [],
+                    total_base: 0,
+                    total_vat: 0,
+                    total_discount: 0,
+                    delivery_fee: sale.delivery_fee || 0,
+                    grand_total: 0,
+                    invoice_type: (sale.invoice_type as 'A' | 'B') || 'A',
+                    transaction_label: sale.transaction_label || null,
+                    customer_id: sale.customer_id || null
+                };
+            }
+            const group = groups[key];
+            group.items.push(sale as Sale);
+            group.total_base += Number(sale.total_price);
+            group.total_vat += Number(sale.vat_amount || 0);
+            group.total_discount += Number(sale.discount_amount || 0);
+        });
 
-        if (activeBranchId) {
-            salesQuery = salesQuery.eq('branch_id', activeBranchId);
-            refundsQuery = refundsQuery.eq('branch_id', activeBranchId);
-        }
+        Object.values(groups).forEach(group => {
+            group.grand_total = group.total_base - group.total_discount + Number(group.delivery_fee);
+        });
 
-        const [salesRes, refundsRes] = await Promise.all([
-            salesQuery,
-            refundsQuery
-        ]);
-
-        if (refundsRes.data) {
-            setRefundedInvoices(new Set(refundsRes.data.map(r => r.invoice_number).filter(Boolean)));
-        }
-
-        const { data, error } = salesRes;
-
-        if (error) {
-            console.error('Error fetching sales:', error);
-        } else {
-            const groups: { [key: string]: GroupedSale } = {};
-            (data as unknown as SupabaseSale[]).forEach(sale => {
-                const key = sale.invoice_number;
-                if (!key) return;
-                if (!groups[key]) {
-                    groups[key] = {
-                        invoice_number: key,
-                        date: sale.date,
-                        full_name: 'Staff',
-                        customer_name: sale.customer_name || 'Walk-in Customer',
-                        fulfillment_status: sale.fulfillment_status || 'pickup',
-                        payment_mode: sale.payment_mode || 'cash',
-                        is_os: sale.is_os || false,
-                        edited_at: sale.edited_at || null,
-                        items: [],
-                        total_base: 0,
-                        total_vat: 0,
-                        total_discount: 0,
-                        delivery_fee: sale.delivery_fee || 0,
-                        grand_total: 0,
-                        invoice_type: (sale as any).invoice_type || 'A',
-                        transaction_label: (sale as any).transaction_label || null
-                    };
-                }
-                const group = groups[key];
-                const s = { ...sale, full_name: 'Staff' } as Sale;
-                group.items.push(s);
-                group.total_base += Number(s.total_price);
-                group.total_vat += Number(s.vat_amount || 0);
-                group.total_discount += Number(s.discount_amount || 0);
-            });
-
-            Object.values(groups).forEach(group => {
-                group.grand_total = group.total_base - group.total_discount + Number(group.delivery_fee);
-            });
-
-            setGroupedSales(Object.values(groups).sort((a, b) =>
-                new Date(b.date).getTime() - new Date(a.date).getTime()
-            ));
-        }
-        setLoading(false);
-    }, [activeBranchId]);
-
-    useEffect(() => {
-        let mounted = true;
-        const load = async () => { if (mounted) await fetchSales(); };
-        load();
-        const channel = supabase.channel('sales_realtime').on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => { if (mounted) fetchSales(true); }).subscribe();
-        return () => { mounted = false; supabase.removeChannel(channel); };
-    }, [fetchSales]);
+        return Object.values(groups).sort((a, b) =>
+            new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+    }, [sales]);
 
     // Listen for global shortcuts and navigation state
     useEffect(() => {
-        const handleOpenModal = () => { setEditData(null); setIsModalOpen(true); };
-        window.addEventListener('open-sales-modal', handleOpenModal);
-        
-        if ((location.state as any)?.openModal) {
-            handleOpenModal();
-            // Clear state immediately to prevent re-opening on refresh
-            navigate(location.pathname, { replace: true, state: {} });
-        }
-
-        return () => window.removeEventListener('open-sales-modal', handleOpenModal);
-    }, [location.state, navigate, location.pathname]);
+        const handleRefresh = () => { fetchSales(true); };
+        window.addEventListener('refresh-data', handleRefresh);
+        return () => window.removeEventListener('refresh-data', handleRefresh);
+    }, [fetchSales]);
 
     const toggleExpand = (invoiceNumber: string) => {
         setExpandedInvoices(prev => {
@@ -218,7 +86,7 @@ export default function Sales() {
         });
     };
 
-    const filteredSales = groupedSales.filter(group => {
+    const filteredSales = useMemo(() => groupedSales.filter(group => {
         const search = searchTerm.toLowerCase();
         const matchesSearch = (
             (group.invoice_number?.toLowerCase().includes(search) ?? false) ||
@@ -234,91 +102,44 @@ export default function Sales() {
             (filterType === 'discounted' && group.total_discount > 0) ||
             (filterType === 'refunded' && refundedInvoices.has(group.invoice_number))
         );
-    });
+    }), [groupedSales, searchTerm, selectedDate, filterType, refundedInvoices]);
 
-    const activeDates = Array.from(new Set(groupedSales.map(s => format(new Date(s.date), 'yyyy-MM-dd'))));
-
-    const handleSuccess = () => { setEditData(null); fetchSales(); };
+    const activeDates = Array.from(new Set(groupedSales.map(s => formatDate(s.date, 'yyyy-MM-dd'))));
 
     const handleEditInvoice = (group: GroupedSale) => {
-        setEditData({
+        openSalesModal({
             invoiceNumber: group.invoice_number,
             customerName: group.customer_name,
-            fulfillmentStatus: group.fulfillment_status,
+            status: group.fulfillment_status,
             paymentMode: group.payment_mode,
             items: group.items.map(item => ({
                 product_id: item.product_id,
                 quantity: item.quantity,
                 unit_price: item.unit_price,
                 total_price: item.total_price,
-                name: item.products.name,
-                brand: item.products.brand
+                name: item.products?.name || 'Unknown Product',
+                brand: item.products?.brand || undefined
             })),
             isVatEnabled: group.total_vat > 0,
             isDiscountEnabled: group.total_discount > 0,
-            is_os: group.is_os,
+            grand_total: group.grand_total,
+            isOs: group.is_os,
             date: group.date,
-            delivery_fee: group.delivery_fee,
-            invoice_type: group.invoice_type
+            deliveryFee: group.delivery_fee,
+            invoiceType: (group.invoice_type as 'A' | 'B' | undefined),
+            transactionLabel: group.transaction_label || undefined,
+            customerId: group.customer_id
         });
-        setIsModalOpen(true);
     };
 
     const handleDeleteInvoice = async (invoiceNumber: string) => {
         if (!window.confirm(`Are you sure you want to delete invoice ${invoiceNumber}? This will restore stock to inventory.`)) return;
 
-        setLoading(true);
         try {
-            // 1. Fetch the sale items BEFORE deleting so we know what stock to restore
-            const { data: saleItems, error: fetchError } = await supabase
-                .from('sales')
-                .select('product_id, quantity')
-                .eq('invoice_number', invoiceNumber);
-
-            if (fetchError) throw fetchError;
-
-            // 2. Restore stock for each product
-            if (saleItems && saleItems.length > 0) {
-                for (const item of saleItems) {
-                    // Get current stock
-                    const { data: product, error: prodError } = await supabase
-                        .from('products')
-                        .select('stock_available')
-                        .eq('id', item.product_id)
-                        .single();
-
-                    if (prodError) {
-                        console.error(`Error fetching product ${item.product_id}:`, prodError);
-                        continue; // Skip this product but continue with others
-                    }
-
-                    // Increment stock by the quantity that was sold
-                    const newStock = (product?.stock_available || 0) + item.quantity;
-                    const { error: updateError } = await supabase
-                        .from('products')
-                        .update({ stock_available: newStock })
-                        .eq('id', item.product_id);
-
-                    if (updateError) {
-                        console.error(`Error restoring stock for product ${item.product_id}:`, updateError);
-                    }
-                }
-            }
-
-            // 3. Delete the sale records
-            const { error: deleteError } = await supabase
-                .from('sales')
-                .delete()
-                .eq('invoice_number', invoiceNumber);
-
-            if (deleteError) throw deleteError;
-
-            fetchSales();
+            await deleteSales(invoiceNumber);
         } catch (err) {
             console.error('Error deleting sale:', err);
             alert('Error: ' + (err instanceof Error ? err.message : 'Unknown error'));
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -356,7 +177,7 @@ export default function Sales() {
                         <Grid size={18} /> EXPRESS ENCODING
                     </button>
                     <button className="flex items-center gap-2 bg-surface border border-border-default text-text-secondary px-5 py-3 rounded-2xl font-bold text-sm hover:bg-subtle transition-all shadow-sm"><Download size={18} /> Export</button>
-                    <button onClick={() => { setEditData(null); setIsModalOpen(true); }} className="flex items-center gap-2 bg-brand-red text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-brand-red-dark transition-all shadow-red active:scale-95"><ShoppingBag size={18} /> CREATE SALE</button>
+                    <button onClick={() => openSalesModal()} className="flex items-center gap-2 bg-brand-red text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-brand-red-dark transition-all shadow-red active:scale-95"><ShoppingBag size={18} /> CREATE SALE</button>
                 </div>
             </div>
 
@@ -438,7 +259,7 @@ export default function Sales() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-subtle">
-                                    {loading ? (
+                                    {hookLoading ? (
                                         [1, 2, 3].map(i => <tr key={i} className="animate-pulse"><td colSpan={5} className="px-6 py-8"><div className="h-4 bg-slate-100 rounded w-full"></div></td></tr>)
                                     ) : filteredSales.length > 0 ? (
                                         filteredSales.map((sale) => (
@@ -469,7 +290,7 @@ export default function Sales() {
                                                                             )}
                                                                         </div>
                                                                     </div>
-                                                                <p className="text-[10px] font-bold text-text-muted uppercase">{format(new Date(sale.date), 'MMM d, yyyy · p')}</p>
+                                                                 <p className="text-[10px] font-bold text-text-muted uppercase">{formatDate(sale.date, 'MMM d, yyyy · p')}</p>
                                                             </div>
                                                         </div>
                                                     </td>
@@ -493,7 +314,7 @@ export default function Sales() {
                                                             <span className="text-[10px] font-black text-text-primary uppercase tracking-wider">{sale.payment_mode || 'CASH'}</span>
                                                         </div>
                                                     </td>
-                                                    <td className="px-6 py-3.5 text-right font-data font-black text-text-primary text-base">₱{sale.grand_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                     <td className="px-6 py-3.5 text-right font-data font-black text-text-primary text-base">{formatCurrency(sale.grand_total)}</td>
                                                     <td className="px-6 py-3.5 text-right flex items-center justify-end gap-2">
                                                         {role === 'owner' && (
                                                             <button
@@ -515,13 +336,13 @@ export default function Sales() {
                                                                         <h4 className="text-[10px] font-black uppercase text-text-primary tracking-widest flex items-center gap-2"><PackageSearch size={14} /> Invoice Breakdown</h4>
                                                                         {!sale.is_os && (
                                                                             <span className={`px-2 py-0.5 ${sale.invoice_type === 'B' ? 'bg-indigo-600' : 'bg-slate-700'} text-white text-[9px] font-black rounded uppercase tracking-tighter shadow-sm`}>
-                                                                                TYPE {sale.invoice_type || 'A'}
+                                                                                TYPE {sale.invoice_type}
                                                                             </span>
                                                                         )}
                                                                         <span className="text-[10px] font-bold text-text-muted bg-muted px-2 py-0.5 rounded uppercase">{sale.full_name}</span>
                                                                         {sale.edited_at && (
                                                                             <span className="text-[9px] font-bold text-brand-orange bg-brand-orange/5 px-2 py-0.5 rounded-lg border border-brand-orange/10 flex items-center gap-1">
-                                                                                <Clock size={10} /> Edited {format(new Date(sale.edited_at), 'MMM d · p')}
+                                                                                <Clock size={10} /> Edited {formatDate(sale.edited_at, 'MMM d · p')}
                                                                             </span>
                                                                         )}
                                                                     </div>
@@ -540,8 +361,8 @@ export default function Sales() {
                                                                                     </div>
                                                                                     <div className="text-right">
                                                                                         <p className="font-bold text-text-primary">x{item.quantity}</p>
-                                                                                        <p className="text-[9px] text-text-muted font-data">UNIT: ₱{Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                                                                                        <p className="text-[10px] text-text-secondary font-data font-black">TOTAL: ₱{Number(item.total_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                                                                        <p className="text-[9px] text-text-muted font-data">UNIT: {formatCurrency(item.unit_price)}</p>
+                                                          <p className="text-[10px] text-text-secondary font-data font-black">TOTAL: {formatCurrency(item.total_price)}</p>
                                                                                     </div>
                                                                                 </div>
                                                                             ))}
@@ -559,33 +380,33 @@ export default function Sales() {
                                                                                 <>
                                                                                     <div className="flex justify-between text-xs pt-2">
                                                                                         <span className="text-text-muted font-medium">VATable Sales (Tax Base)</span>
-                                                                                        <span className="font-data font-bold">₱{(sale.total_vat > 0 ? (sale.total_base / 1.12) : 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                                                                    </div>
-                                                                                    <div className="flex justify-between text-xs">
-                                                                                        <span className="text-text-muted font-medium">VAT Amount (12%)</span>
-                                                                                        <span className="font-data font-bold text-brand-red">₱{sale.total_vat.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                          <span className="font-data font-bold">{formatCurrency((sale.total_vat > 0 ? (sale.total_base / 1.12) : 0))}</span>
+                                                      </div>
+                                                      <div className="flex justify-between text-xs">
+                                                          <span className="text-text-muted font-medium">VAT Amount (12%)</span>
+                                                          <span className="font-data font-bold text-brand-red">{formatCurrency(sale.total_vat)}</span>
                                                                                     </div>
                                                                                 </>
                                                                             )}
                                                                             <div className="flex justify-between text-xs pt-1">
                                                                                 <span className="text-text-muted font-medium">Initial Sub-Total</span>
-                                                                                <span className="font-data font-bold">₱{sale.total_base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                                                            </div>
-                                                                            {sale.total_discount > 0 && (
-                                                                                <div className="flex justify-between text-xs">
-                                                                                    <span className="text-brand-orange font-medium">Applied Discount</span>
-                                                                                    <span className="font-data font-bold text-brand-orange">- ₱{sale.total_discount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                              <span className="font-data font-bold">{formatCurrency(sale.total_base)}</span>
+                                              </div>
+                                              {sale.total_discount > 0 && (
+                                                  <div className="flex justify-between text-xs">
+                                                      <span className="text-brand-orange font-medium">Applied Discount</span>
+                                                      <span className="font-data font-bold text-brand-orange">- {formatCurrency(sale.total_discount)}</span>
                                                                                 </div>
                                                                             )}
                                                                             {Number(sale.delivery_fee) > 0 && (
                                                                                 <div className="flex justify-between text-xs pt-1 border-t border-border-default/50 mt-1">
                                                                                     <span className="text-text-muted font-bold uppercase tracking-tighter text-[9px]">Delivery Fee</span>
-                                                                                    <span className="font-data font-black text-blue-500">+ ₱{Number(sale.delivery_fee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                                                                </div>
-                                                                            )}
-                                                                            <div className="pt-3 border-t-2 border-border-default flex justify-between items-center text-sm font-black text-text-primary">
-                                                                                <span className="uppercase tracking-widest text-[10px]">Grand Total</span>
-                                                                                <span className="text-2xl font-data">₱{sale.grand_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                              <span className="font-data font-black text-blue-500">+ {formatCurrency(sale.delivery_fee)}</span>
+                                                  </div>
+                                              )}
+                                              <div className="pt-3 border-t-2 border-border-default flex justify-between items-center text-sm font-black text-text-primary">
+                                                  <span className="uppercase tracking-widest text-[10px]">Grand Total</span>
+                                                  <span className="text-2xl font-data">{formatCurrency(sale.grand_total)}</span>
                                                                             </div>
                                                                         </div>
                                                                     </div>
@@ -606,7 +427,6 @@ export default function Sales() {
                 </div>
             </div>
 
-            <SalesModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditData(null); }} onSuccess={handleSuccess} editData={editData || undefined} />
         </div >
     );
 }

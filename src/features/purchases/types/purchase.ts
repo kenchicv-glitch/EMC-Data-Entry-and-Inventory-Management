@@ -6,6 +6,7 @@ export type PurchaseType = 'supplier' | 'transfer';
 
 export interface Purchase {
     id: string;
+    transaction_label: string | null;
     product_id: string;
     quantity: number;
     unit_price: number | null;
@@ -22,6 +23,7 @@ export interface Purchase {
     payment_date: string | null;
     invoice_number: string | null;
     supplier_id: string | null;
+    branch_id: string;
     user_id: string | null;
     is_finalized?: boolean;
     products?: Pick<Product, 'name'>;
@@ -39,6 +41,8 @@ export interface GroupedPurchase {
     total_vat: number;
     total_discount: number;
     grand_total: number;
+    transaction_label: string | null;
+    supplier_id: string | null;
 }
 
 export interface SupplierReturn {
@@ -53,5 +57,6 @@ export interface SupplierReturn {
     reason: string | null;
     date: string;
     invoice_number: string | null;
+    branch_id: string;
     products?: Pick<Product, 'name'>;
 }

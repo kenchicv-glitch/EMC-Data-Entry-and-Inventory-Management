@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../../shared/lib/supabase';
 import { X, Wallet, AlertTriangle } from 'lucide-react';
-import { useBranch } from '../../../shared/lib/BranchContext';
+import { useBranch } from '../../../shared/hooks/useBranch';
+import { type Expense } from '../../../shared/types';
 
 interface ExpenseModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSuccess: (newExpense?: unknown) => void;
-    expense?: any; // Add optional expense for editing
+    onSuccess: (newExpense?: Expense) => void;
+    expense?: Expense; // Add optional expense for editing
 }
 
 const CATEGORIES = ['Salary', 'Utilities', 'Rent', 'Transportation', 'Supplies', 'Maintenance', 'Donation', 'Others'] as const;
@@ -39,8 +40,9 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, expense }: Ex
         if (isOpen) {
             if (expense) {
                 // Editing mode
-                if (CATEGORIES.includes(expense.category)) {
-                    setCategory(expense.category);
+                const cat = expense.category as any;
+                if (CATEGORIES.includes(cat)) {
+                    setCategory(cat as typeof CATEGORIES[number]);
                 } else {
                     setCategory('Others');
                     setCustomCategory(expense.category);

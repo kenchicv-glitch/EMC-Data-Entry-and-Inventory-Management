@@ -1,5 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '../../shared/lib/supabase';
+import { useState } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     PieChart, Pie, Cell
@@ -8,152 +7,33 @@ import {
     TrendingUp, DollarSign, PieChart as PieChartIcon,
     Activity, Calendar as CalendarIcon
 } from 'lucide-react';
-import { startOfDay, endOfDay, format, isSameDay } from 'date-fns';
+import { isSameDay } from 'date-fns';
 import Calendar from '../../features/reports/components/Calendar';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 import { Building2 } from 'lucide-react';
-
-interface ProfitStats {
-    totalRevenue: number;
-    totalCOGS: number;
-    grossProfit: number;
-    netProfit: number;
-    totalExpenses: number;
-    vatAmount: number;
-}
-
-interface CategoryProfit {
-    name: string;
-    profit: number;
-    revenue: number;
-}
-
-interface SupabaseSale {
-    total_price: number;
-    quantity: number;
-    vat_amount: number;
-    date: string;
-    cost_price: number;
-    products: {
-        name: string;
-    } | null;
-}
-
-interface GroupedSale {
-    total_price: number;
-    quantity: number;
-    vat_amount: number;
-}
+import { useProfitData } from '../../features/reports/hooks/useProfitData';
+import { formatCurrency, formatDate } from '../../shared/lib/formatUtils';
 
 const COLORS = ['#EE3E3E', '#5A6E8C', '#F59E0B', '#10B981', '#6366F1', '#EC4899'];
 
 export default function ProfitAnalysis() {
-    const [stats, setStats] = useState<ProfitStats>({
-        totalRevenue: 0,
-        totalCOGS: 0,
-        grossProfit: 0,
-        netProfit: 0,
-        totalExpenses: 0,
-        vatAmount: 0
-    });
-    const [categoryData, setCategoryData] = useState<CategoryProfit[]>([]);
-    const [loading, setLoading] = useState(true);
     const [dateRange, setDateRange] = useState<{ start: Date, end: Date }>({
         start: new Date(),
         end: new Date()
     });
     const [isDateRangeActive, setIsDateRangeActive] = useState(false);
-    const [groupedSales, setGroupedSales] = useState<Record<string, GroupedSale>>({});
 
     const { branches } = useBranch();
-    const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null); // null = all branches
+    const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+    const [isVatInclusive, setIsVatInclusive] = useState(false);
 
-    const fetchProfitData = useCallback(async () => {
-        setLoading(true);
-        const rangeStart = startOfDay(dateRange.start).toISOString();
-        const rangeEnd = endOfDay(dateRange.end).toISOString();
+    const { metrics: stats, categoryData, sales, isLoading } = useProfitData({
+        start: formatDate(dateRange.start, 'yyyy-MM-dd'),
+        end: formatDate(dateRange.end, 'yyyy-MM-dd')
+    }, selectedBranchId, isVatInclusive);
 
-        // 1. Fetch Sales
-        let salesQuery = supabase
-            .from('sales')
-            .select('total_price, quantity, vat_amount, date, cost_price, products(name)')
-            .gte('date', rangeStart)
-            .lte('date', rangeEnd);
-
-        // 2. Fetch Expenses
-        let expensesQuery = supabase
-            .from('expenses')
-            .select('amount, date')
-            .gte('date', rangeStart)
-            .lte('date', rangeEnd);
-            
-        const branchFilter = selectedBranchId || null;
-        if (branchFilter) {
-            salesQuery = salesQuery.eq('branch_id', branchFilter);
-            expensesQuery = expensesQuery.eq('branch_id', branchFilter);
-        }
-
-        const { data: salesData } = await salesQuery;
-        const { data: expensesData } = await expensesQuery;
-
-        const sales = (salesData as unknown as SupabaseSale[]) || [];
-        const expenses = expensesData || [];
-
-
-        // Group sales for calendar highlights
-        const salesByDate: Record<string, GroupedSale> = {};
-        sales.forEach(s => {
-            const d = format(new Date(s.date), 'yyyy-MM-dd');
-            if (!salesByDate[d]) salesByDate[d] = { total_price: 0, quantity: 0, vat_amount: 0 };
-            salesByDate[d].total_price += s.total_price;
-            salesByDate[d].quantity += s.quantity;
-            salesByDate[d].vat_amount += s.vat_amount || 0;
-        });
-        setGroupedSales(salesByDate);
-
-        // All aggregated stats for the selected range
-        const totalRevenue = sales.reduce((sum, s) => sum + s.total_price, 0);
-        const totalVAT = sales.reduce((sum, s) => sum + (s.vat_amount || 0), 0);
-        const totalCOGS = sales.reduce((sum, s) => sum + (s.quantity * (s.cost_price || 0)), 0);
-        const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-
-        setStats({
-            totalRevenue,
-            totalCOGS,
-            grossProfit: totalRevenue - totalCOGS,
-            netProfit: (totalRevenue - totalCOGS) - totalExpenses,
-            totalExpenses,
-            vatAmount: totalVAT
-        });
-
-        // Category Breakdown
-        const cats: Record<string, { profit: number; revenue: number }> = {};
-        sales.forEach(s => {
-            const nameParts = s.products?.name.split(' > ') || ['Uncategorized'];
-            const l1 = nameParts[0];
-            if (!cats[l1]) cats[l1] = { profit: 0, revenue: 0 };
-            const cost = s.cost_price || 0;
-            cats[l1].revenue += s.total_price;
-            cats[l1].profit += (s.total_price - (s.quantity * cost));
-        });
-
-        setCategoryData(Object.entries(cats).map(([name, data]) => ({
-            name,
-            profit: data.profit,
-            revenue: data.revenue
-        })).sort((a, b) => b.profit - a.profit));
-
-        setLoading(false);
-    }, [dateRange, selectedBranchId]);
-
-    useEffect(() => {
-        let mounted = true;
-        const load = async () => {
-            if (mounted) await fetchProfitData();
-        };
-        load();
-        return () => { mounted = false; };
-    }, [fetchProfitData]);
+    // Group sales for calendar highlights
+    const activeDates = sales.map(s => formatDate(s.date, 'yyyy-MM-dd'));
 
     const handleDateSelect = (date: Date) => {
         if (!isDateRangeActive) {
@@ -170,8 +50,6 @@ export default function ProfitAnalysis() {
             setDateRange(newRange);
         }
     };
-
-    const activeDates = Object.keys(groupedSales);
 
     return (
         <div className="space-y-8 animate-fade-in pb-10 bg-bg-base">
@@ -209,8 +87,8 @@ export default function ProfitAnalysis() {
                                 {(dateRange.start && dateRange.end) && (
                                     <span className="text-[10px] font-black text-brand-red">
                                         {isDateRangeActive && !isSameDay(dateRange.start, dateRange.end)
-                                            ? `${format(dateRange.start, 'MMM d')} - ${format(dateRange.end, 'MMM d')}`
-                                            : format(dateRange.start, 'MMM d, yyyy')}
+                                            ? `${formatDate(dateRange.start, 'MMM d')} - ${formatDate(dateRange.end, 'MMM d')}`
+                                            : formatDate(dateRange.start, 'MMM d, yyyy')}
                                     </span>
                                 )}
                             </div>
@@ -255,9 +133,15 @@ export default function ProfitAnalysis() {
                                     </p>
                                 </div>
                                 <div className="pt-4 border-t border-border-muted">
+                                    <p className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2">Total Refunds & Returns</p>
+                                    <p className="text-2xl font-black text-brand-red font-data">
+                                        {formatCurrency(stats.totalRefunds || 0)}
+                                    </p>
+                                </div>
+                                <div className="pt-4 border-t border-border-muted">
                                     <p className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2">VAT Liability (Estimated)</p>
                                     <p className="text-2xl font-black text-text-primary font-data">
-                                        ₱{stats.vatAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                                        {formatCurrency(stats.vatAmount)}
                                     </p>
                                 </div>
                             </div>
@@ -267,10 +151,46 @@ export default function ProfitAnalysis() {
 
                 <div className="flex-1 space-y-8 min-w-0">
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-                        <MetricCard icon={<DollarSign size={20} />} label="Total Revenue" value={stats.totalRevenue} color="text-text-primary" loading={loading} />
-                        <MetricCard icon={<Activity size={20} />} label="Cost of Goods" value={stats.totalCOGS} color="text-text-secondary" loading={loading} />
-                        <MetricCard icon={<TrendingUp size={20} />} label="Gross Profit" value={stats.grossProfit} color="text-emerald-500" loading={loading} />
-                        <MetricCard icon={<TrendingUp size={20} />} label="Net Profit" value={stats.netProfit} color="text-blue-500" loading={loading} />
+                        <MetricCard 
+                            icon={<DollarSign size={20} />} 
+                            label={`Net Revenue ${isVatInclusive ? '(incl)' : '(excl)'}`} 
+                            tooltip={isVatInclusive ? "Total SRP sales minus discounts" : "Gross Sales minus VAT and Discounts"}
+                            value={stats.totalRevenue} 
+                            color="text-text-primary" 
+                            loading={isLoading}
+                            action={
+                                <div 
+                                    onClick={(e) => { e.stopPropagation(); setIsVatInclusive(!isVatInclusive); }}
+                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red focus-visible:ring-offset-2 ${isVatInclusive ? 'bg-brand-red' : 'bg-bg-subtle'}`}
+                                >
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isVatInclusive ? 'translate-x-4' : 'translate-x-0'}`} />
+                                </div>
+                            }
+                        />
+                        <MetricCard 
+                            icon={<Activity size={20} />} 
+                            label="Cost of Goods" 
+                            tooltip="Total Unit Cost of items sold (Qty * Unit Cost)"
+                            value={stats.totalCOGS} 
+                            color="text-text-secondary" 
+                            loading={isLoading} 
+                        />
+                        <MetricCard 
+                            icon={<TrendingUp size={20} />} 
+                            label="Gross Profit" 
+                            tooltip="Net Revenue minus Cost of Goods"
+                            value={stats.grossProfit} 
+                            color="text-emerald-500" 
+                            loading={isLoading} 
+                        />
+                        <MetricCard 
+                            icon={<TrendingUp size={20} />} 
+                            label="Net Profit" 
+                            tooltip="Gross Profit minus Operating Expenses"
+                            value={stats.netProfit} 
+                            color="text-blue-500" 
+                            loading={isLoading} 
+                        />
                     </div>
 
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -291,7 +211,23 @@ export default function ProfitAnalysis() {
                                         </Pie>
                                         <Tooltip
                                             contentStyle={{ backgroundColor: 'var(--bg-surface)', borderRadius: '20px', border: '1px solid var(--border-muted)', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', padding: '15px' }}
-                                            formatter={(v: any) => [`₱${Number(v).toLocaleString()}`, 'Profit']}
+                                            formatter={(value: any, name: any, props: any) => {
+                                                const payload = props.payload;
+                                                return [
+                                                    <div className="space-y-1">
+                                                        <div className="text-sm font-black text-text-primary">{formatCurrency(Number(value))}</div>
+                                                        <div className="text-[10px] text-text-muted uppercase font-bold tracking-widest">
+                                                            Revenue: {formatCurrency(payload.revenue)}
+                                                        </div>
+                                                        {value < 0 && (
+                                                            <div className="text-[9px] text-brand-red font-black uppercase mt-1 animate-pulse">
+                                                                ! Negative Margin Alert
+                                                            </div>
+                                                        )}
+                                                    </div>,
+                                                    name
+                                                ];
+                                            }}
                                         />
                                         <Legend verticalAlign="bottom" height={40} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', paddingTop: '20px' }} />
                                     </PieChart>
@@ -311,7 +247,7 @@ export default function ProfitAnalysis() {
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-muted)" />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800, fill: 'var(--text-muted)' }} />
                                         <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800, fill: 'var(--text-muted)' }} />
-                                        <Tooltip cursor={{ fill: 'var(--bg-subtle)' }} contentStyle={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-muted)', borderRadius: '12px' }} formatter={(v: any) => `₱${Number(v).toLocaleString()}`} />
+                                        <Tooltip cursor={{ fill: 'var(--bg-subtle)' }} contentStyle={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-muted)', borderRadius: '12px' }} formatter={(v: any) => formatCurrency(Number(v))} />
                                         <Bar dataKey="revenue" fill="var(--color-brand-red)" radius={[10, 10, 0, 0]} barSize={28} name="Revenue" />
                                         <Bar dataKey="profit" fill="var(--color-success)" radius={[10, 10, 0, 0]} barSize={28} name="Profit" />
                                     </BarChart>
@@ -325,15 +261,29 @@ export default function ProfitAnalysis() {
     );
 }
 
-function MetricCard({ icon, label, value, color, loading }: { icon: React.ReactNode, label: string, value: number, color: string, loading: boolean }) {
+function MetricCard({ icon, label, value, color, loading, tooltip, action }: { icon: React.ReactNode, label: string, value: number, color: string, loading: boolean, tooltip?: string, action?: React.ReactNode }) {
     return (
-        <div className="bg-bg-surface p-6 rounded-3xl border border-border-muted shadow-sm hover:border-brand-red/30 transition-colors group">
+        <div className="bg-bg-surface p-6 rounded-3xl border border-border-muted shadow-sm hover:border-brand-red/30 transition-colors group relative">
             <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 bg-bg-base/50 rounded-xl flex items-center justify-center text-text-muted transition-colors group-hover:bg-brand-red/10 group-hover:text-brand-red">{icon}</div>
-                <div className="flex items-center gap-1 text-[10px] font-bold text-text-muted uppercase tracking-widest"><CalendarIcon size={12} /> Today</div>
+                {action ? action : <div className="flex items-center gap-1 text-[10px] font-bold text-text-muted uppercase tracking-widest"><CalendarIcon size={12} /> Today</div>}
             </div>
-            <p className="text-[10px] font-bold text-text-muted uppercase tracking-[0.2em] mb-1">{label}</p>
-            {loading ? <div className="h-8 bg-bg-subtle animate-pulse rounded w-24"></div> : <p className={`text-2xl font-black ${color} font-data`}>₱{value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>}
+            <div className="relative group/tooltip">
+                <p className="text-[10px] font-bold text-text-muted uppercase tracking-[0.2em] mb-1 flex items-center gap-1">
+                    {label}
+                    {tooltip && <Activity size={10} className="opacity-30" />}
+                </p>
+                {tooltip && (
+                    <div className="absolute bottom-full left-0 mb-2 w-48 p-2 bg-brand-charcoal text-[9px] text-white rounded-lg opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50 font-medium">
+                        {tooltip}
+                    </div>
+                )}
+            </div>
+            {loading ? <div className="h-8 bg-bg-subtle animate-pulse rounded w-24"></div> : (
+                <p className={`text-2xl font-black ${color} font-data ${value < 0 ? 'animate-pulse text-brand-red' : ''}`}>
+                    {formatCurrency(value)}
+                </p>
+            )}
         </div>
     );
 }

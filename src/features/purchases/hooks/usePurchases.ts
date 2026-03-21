@@ -1,25 +1,33 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseService } from '../services/purchaseService';
 import type { Purchase } from '../../../shared/types';
+import { useBranch } from '../../../shared/hooks/useBranch';
+import { queryKeys } from '../../../shared/lib/queryKeys';
+import { supabase } from '../../../shared/lib/supabase';
+import { useEffect } from 'react';
+import { startOfMonth } from 'date-fns';
 
-export const usePurchases = () => {
+export const usePurchases = (startDate?: string) => {
     const queryClient = useQueryClient();
+    const { activeBranchId } = useBranch();
+
+    const effectiveStartDate = startDate ?? startOfMonth(new Date()).toISOString();
 
     const purchasesQuery = useQuery({
-        queryKey: ['purchases'],
-        queryFn: purchaseService.getAll,
+        queryKey: queryKeys.purchases.list(activeBranchId, effectiveStartDate),
+        queryFn: () => purchaseService.getAll(activeBranchId, effectiveStartDate),
     });
 
     const returnsQuery = useQuery({
-        queryKey: ['purchase_returns'],
-        queryFn: purchaseService.getReturns,
+        queryKey: queryKeys.purchases.returns(activeBranchId),
+        queryFn: () => purchaseService.getReturns(activeBranchId),
     });
 
     const createPurchasesMutation = useMutation({
         mutationFn: (newPurchases: Omit<Purchase, 'id' | 'products'>[]) => purchaseService.create(newPurchases),
         onMutate: async (newPurchases) => {
-            await queryClient.cancelQueries({ queryKey: ['purchases'] });
-            const previousPurchases = queryClient.getQueryData<Purchase[]>(['purchases']);
+            await queryClient.cancelQueries({ queryKey: queryKeys.purchases.list(activeBranchId) });
+            const previousPurchases = queryClient.getQueryData<Purchase[]>(queryKeys.purchases.list(activeBranchId));
 
             if (previousPurchases) {
                 const optimisticPurchase: Purchase = {
@@ -28,6 +36,7 @@ export const usePurchases = () => {
                     created_at: new Date().toISOString(),
                     total_amount: newPurchases.reduce((sum, item) => sum + (item.total_price || 0), 0),
                     status: 'received',
+                    branch_id: activeBranchId || '',
                     items: newPurchases.map(item => ({
                         id: crypto.randomUUID(),
                         product_id: item.product_id,
@@ -37,19 +46,19 @@ export const usePurchases = () => {
                     })) as any
                 } as any;
 
-                queryClient.setQueryData<Purchase[]>(['purchases'], [optimisticPurchase, ...previousPurchases]);
+                queryClient.setQueryData<Purchase[]>(queryKeys.purchases.list(activeBranchId), [optimisticPurchase, ...previousPurchases]);
             }
 
             return { previousPurchases };
         },
         onError: (_err, _newPurchases, context) => {
             if (context?.previousPurchases) {
-                queryClient.setQueryData(['purchases'], context.previousPurchases);
+                queryClient.setQueryData(queryKeys.purchases.list(activeBranchId), context.previousPurchases);
             }
         },
         onSettled: () => {
-            queryClient.invalidateQueries({ queryKey: ['purchases'] });
-            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.purchases.all });
+            queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
         },
     });
 
@@ -57,17 +66,57 @@ export const usePurchases = () => {
         mutationFn: ({ invoiceNumber, purchase }: { invoiceNumber: string; purchase: Partial<Omit<Purchase, 'id' | 'invoice_number' | 'products'>> }) =>
             purchaseService.updateByInvoice(invoiceNumber, purchase),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['purchases'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.purchases.all });
         },
     });
 
     const deletePurchasesMutation = useMutation({
         mutationFn: (invoiceNumber: string) => purchaseService.deleteByInvoice(invoiceNumber),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['purchases'] });
-            queryClient.invalidateQueries({ queryKey: ['products'] });
+            queryClient.invalidateQueries({ queryKey: queryKeys.purchases.all });
+            queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
         },
     });
+
+    useEffect(() => {
+        if (!activeBranchId) return;
+
+        const channel = supabase
+            .channel('purchases_changes')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'purchases' 
+            }, () => {
+                queryClient.invalidateQueries({ queryKey: queryKeys.purchases.all });
+                queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [activeBranchId, queryClient]);
+
+    useEffect(() => {
+        if (!activeBranchId) return;
+
+        const channel = supabase
+            .channel('purchases_changes')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'purchases' 
+            }, () => {
+                queryClient.invalidateQueries({ queryKey: queryKeys.purchases.all });
+                queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [activeBranchId, queryClient]);
 
     return {
         purchases: purchasesQuery.data ?? [],
@@ -77,6 +126,22 @@ export const usePurchases = () => {
         createPurchases: createPurchasesMutation.mutateAsync,
         updatePurchases: updatePurchasesMutation.mutateAsync,
         deletePurchases: deletePurchasesMutation.mutateAsync,
+        markPurchaseAsReceived: (invoiceNumber: string) => 
+            updatePurchasesMutation.mutateAsync({ 
+                invoiceNumber, 
+                purchase: { status: 'received', received_date: new Date().toISOString() } 
+            }),
+        markPurchaseAsPaid: (invoiceNumber: string) => 
+            updatePurchasesMutation.mutateAsync({ 
+                invoiceNumber, 
+                purchase: { payment_status: 'paid', payment_date: new Date().toISOString() } 
+            }),
+        fetchPurchases: (invalidate: boolean = false) => {
+            if (invalidate) {
+                queryClient.invalidateQueries({ queryKey: queryKeys.purchases.all });
+            }
+            return purchasesQuery.refetch();
+        },
         isAdding: createPurchasesMutation.isPending,
         isUpdating: updatePurchasesMutation.isPending,
         isDeleting: deletePurchasesMutation.isPending,

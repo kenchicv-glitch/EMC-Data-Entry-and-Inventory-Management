@@ -4,33 +4,20 @@ import {
     RefreshCw,
     History, Search, Edit3, Filter
 } from 'lucide-react';
-import { format, startOfDay, endOfDay, isToday } from 'date-fns';
+import { isToday } from 'date-fns';
 import Calendar from '../../features/reports/components/Calendar';
-import { ShoppingCart, ArrowDownRight, RotateCcw, Package, AlertCircle } from 'lucide-react';
+import { ShoppingCart, ArrowDownRight, RotateCcw, Package, AlertCircle, Truck } from 'lucide-react';
 import { useAudit } from '../../shared/hooks/useAudit';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
+import { useInventoryReport } from './hooks/useInventoryReport';
+import { formatDate } from '../../shared/lib/formatUtils';
 
-interface InventorySnap {
-    id: string;
-    name: string;
-    opening: number;
-    inwards: number;
-    outwards: number;
-    returns: number;
-    adjustments: number;
-    ending: number;
-    transfers?: {
-        type: 'in' | 'out';
-        branch_name: string;
-        quantity: number;
-    }[];
-}
 
 export default function DailyInventorySummary() {
     const { activeBranchId } = useBranch();
-    const [summary, setSummary] = useState<InventorySnap[]>([]);
-    const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+    const { data: summary = [], isLoading: loading, refetch: fetchHistory } = useInventoryReport(selectedDate, activeBranchId);
+    
     const [showOnlyMoved, setShowOnlyMoved] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isReconcileMode, setIsReconcileMode] = useState(false);
@@ -38,189 +25,8 @@ export default function DailyInventorySummary() {
     const [isProcessing, setIsProcessing] = useState(false);
     const { logAction } = useAudit();
 
-    const fetchHistory = useCallback(async () => {
-        setLoading(true);
-        try {
-            // 1. Get ALL products (current state)
-            let productsQuery = supabase
-                .from('products')
-                .select('id, name, sku, stock_available');
-            
-            if (activeBranchId) {
-                productsQuery = productsQuery.eq('branch_id', activeBranchId);
-            }
 
-            const { data: products } = await productsQuery;
-
-            if (!products) return;
-
-            const targetStart = startOfDay(selectedDate);
-            const targetEnd = endOfDay(selectedDate);
-
-            // 2. Fetch ALL movements after the target date
-            const afterStr = targetEnd.toISOString();
-            let salesQuery = supabase.from('sales').select('product_id, quantity, date').gt('date', afterStr);
-            let purchasesQuery = supabase.from('purchases').select('product_id, quantity, date').eq('status', 'received').gt('date', afterStr);
-            let returnsQuery = supabase.from('supplier_returns').select('product_id, quantity, date').gt('date', afterStr);
-            let refundsQuery = supabase.from('customer_refunds').select('product_id, quantity, date').gt('date', afterStr);
-            let adjustmentsQuery = supabase.from('inventory_adjustments').select('product_id, difference, created_at').gt('created_at', afterStr);
-
-            if (activeBranchId) {
-                salesQuery = salesQuery.eq('branch_id', activeBranchId);
-                purchasesQuery = purchasesQuery.eq('branch_id', activeBranchId);
-                returnsQuery = returnsQuery.eq('branch_id', activeBranchId);
-                refundsQuery = refundsQuery.eq('branch_id', activeBranchId);
-                adjustmentsQuery = adjustmentsQuery.eq('branch_id', activeBranchId);
-            }
-
-            let transfersOutQuery = supabase
-                .from('purchases')
-                .select('quantity, date, products(sku), branches:branch_id(name)')
-                .eq('source_branch_id', activeBranchId)
-                .eq('status', 'received')
-                .gt('date', afterStr);
-
-            const [salesRes, purchasesRes, returnsRes, refundsRes, adjustmentsRes, transfersOutRes] = await Promise.all([
-                salesQuery,
-                purchasesQuery,
-                returnsQuery,
-                refundsQuery,
-                adjustmentsQuery,
-                transfersOutQuery
-            ]);
-
-            const sales = salesRes.data;
-            const purchases = purchasesRes.data;
-            const returns = returnsRes.data;
-            const refunds = refundsRes.data;
-            const adjustments = adjustmentsRes.data;
-            const transfersOut = transfersOutRes.data;
-
-            // 3. Fetch movements FOR THE TARGET DATE
-            const isoTargetStart = targetStart.toISOString();
-            const isoTargetEnd = targetEnd.toISOString();
-
-            let dSalesQuery = supabase.from('sales').select('product_id, quantity').gte('date', isoTargetStart).lte('date', isoTargetEnd);
-            let dPurchasesQuery = supabase.from('purchases').select('product_id, quantity, purchase_type, branches:source_branch_id(name)').eq('status', 'received').gte('date', isoTargetStart).lte('date', isoTargetEnd);
-            let dReturnsQuery = supabase.from('supplier_returns').select('product_id, quantity').gte('date', isoTargetStart).lte('date', isoTargetEnd);
-            let dRefundsQuery = supabase.from('customer_refunds').select('product_id, quantity').gte('date', isoTargetStart).lte('date', isoTargetEnd);
-            let dAdjustmentsQuery = supabase.from('inventory_adjustments').select('product_id, difference').gte('created_at', isoTargetStart).lte('created_at', isoTargetEnd);
-
-            if (activeBranchId) {
-                dSalesQuery = dSalesQuery.eq('branch_id', activeBranchId);
-                dPurchasesQuery = dPurchasesQuery.eq('branch_id', activeBranchId);
-                dReturnsQuery = dReturnsQuery.eq('branch_id', activeBranchId);
-                dRefundsQuery = dRefundsQuery.eq('branch_id', activeBranchId);
-                dAdjustmentsQuery = dAdjustmentsQuery.eq('branch_id', activeBranchId);
-            }
-
-            let dTransfersOutQuery = supabase
-                .from('purchases')
-                .select('quantity, products(sku), branches:branch_id(name)')
-                .eq('source_branch_id', activeBranchId)
-                .eq('status', 'received')
-                .gte('date', isoTargetStart)
-                .lte('date', isoTargetEnd);
-
-            const [dSalesRes, dPurchasesRes, dReturnsRes, dRefundsRes, dAdjustmentsRes, dTransfersOutRes] = await Promise.all([
-                dSalesQuery,
-                dPurchasesQuery,
-                dReturnsQuery,
-                dRefundsQuery,
-                dAdjustmentsQuery,
-                dTransfersOutQuery
-            ]);
-
-            const dSales = dSalesRes.data;
-            const dPurchases = dPurchasesRes.data;
-            const dReturns = dReturnsRes.data;
-            const dRefunds = dRefundsRes.data;
-            const dAdjustments = dAdjustmentsRes.data;
-            const dTransfersOut = dTransfersOutRes.data;
-
-            const snaps: InventorySnap[] = products.map(p => {
-                const current = p.stock_available;
-
-                // Adjust for movements AFTER the target date
-                const salesAfter = sales?.filter(s => s.product_id === p.id).reduce((a, s) => a + s.quantity, 0) || 0;
-                const purchasesAfter = purchases?.filter(s => s.product_id === p.id).reduce((a, s) => a + s.quantity, 0) || 0;
-                const transfersOutAfter = transfersOut?.filter(s => {
-                    const products = s.products as any;
-                    const sku = Array.isArray(products) ? products[0]?.sku : products?.sku;
-                    return sku === p.sku;
-                }).reduce((a, s) => a + s.quantity, 0) || 0;
-                const returnsAfter = returns?.filter(s => s.product_id === p.id).reduce((a, s) => a + s.quantity, 0) || 0;
-                const refundsAfter = refunds?.filter(s => s.product_id === p.id).reduce((a, s) => a + s.quantity, 0) || 0;
-                const adjustmentsAfter = adjustments?.filter(s => s.product_id === p.id).reduce((a, s) => a + s.difference, 0) || 0;
-
-                // Past = Current + SalesAfter + TransfersOutAfter - PurchasesAfter + ReturnsAfter - RefundsAfter - AdjustmentsAfter
-                const endingBalance = current + salesAfter + transfersOutAfter - purchasesAfter + returnsAfter - refundsAfter - adjustmentsAfter;
-
-                // Movements ON Target Date
-                const inwards = dPurchases?.filter(s => s.product_id === p.id).reduce((a, s) => a + s.quantity, 0) || 0;
-                
-                // Track individual transfers for UI
-                const transfers: InventorySnap['transfers'] = [];
-                
-                // 1. Incoming Transfers
-                dPurchases?.filter(s => s.product_id === p.id && (s as any).purchase_type === 'transfer')
-                    .forEach(s => {
-                        const bName = Array.isArray((s as any).branches) ? (s as any).branches[0]?.name : (s as any).branches?.name;
-                        transfers.push({
-                            type: 'in',
-                            branch_name: bName || 'Other Branch',
-                            quantity: s.quantity
-                        });
-                    });
-
-                // 2. Outgoing Transfers
-                const dTransfersOutMatches = dTransfersOut?.filter(s => {
-                    const products = (s as any).products;
-                    const sku = Array.isArray(products) ? products[0]?.sku : products?.sku;
-                    return sku === p.sku;
-                }) || [];
-
-                dTransfersOutMatches.forEach(s => {
-                    const bName = Array.isArray((s as any).branches) ? (s as any).branches[0]?.name : (s as any).branches?.name;
-                    transfers.push({
-                        type: 'out',
-                        branch_name: bName || 'Other Branch',
-                        quantity: s.quantity
-                    });
-                });
-
-                const transfersOutTarget = dTransfersOutMatches.reduce((a, s) => a + s.quantity, 0);
-                const outwards = (dSales?.filter(s => s.product_id === p.id).reduce((a, s) => a + s.quantity, 0) || 0) +
-                    (dReturns?.filter(s => s.product_id === p.id).reduce((a, s) => a + s.quantity, 0) || 0) +
-                    transfersOutTarget;
-                const refundsTotal = dRefunds?.filter(s => s.product_id === p.id).reduce((a, s) => a + s.quantity, 0) || 0;
-                const adjustmentsTotal = dAdjustments?.filter(s => s.product_id === p.id).reduce((a, s) => a + s.difference, 0) || 0;
-
-                // Opening = Ending - In + Out - Refunds - Adjustments
-                const opening = endingBalance - inwards + outwards - refundsTotal - adjustmentsTotal;
-
-                return {
-                    id: p.id,
-                    name: p.name,
-                    opening,
-                    inwards,
-                    outwards,
-                    returns: refundsTotal,
-                    adjustments: adjustmentsTotal,
-                    ending: endingBalance,
-                    transfers
-                };
-            });
-
-            setSummary(snaps);
-        } catch (err) {
-            console.error('Error calculating history:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [selectedDate, activeBranchId]);
-
-    const handleProcessReconciliation = async () => {
+    const handleProcessReconciliation = useCallback(async () => {
         if (!window.confirm('Are you sure you want to process these inventory adjustments? This will update physical stock levels.')) return;
 
         setIsProcessing(true);
@@ -235,7 +41,7 @@ export default function DailyInventorySummary() {
                     actual_stock: actualNum,
                     difference: actualNum - item.ending,
                     type: 'Reconciliation',
-                    reason: `Manual reconciliation for ${format(selectedDate, 'MMM d, yyyy')}`
+                    reason: `Manual reconciliation for ${formatDate(selectedDate, 'yyyy-MM-dd')}`
                 };
             }).filter(Boolean);
 
@@ -274,7 +80,7 @@ export default function DailyInventorySummary() {
         } finally {
             setIsProcessing(false);
         }
-    };
+    }, [actualCounts, summary, selectedDate, activeBranchId, logAction, fetchHistory]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -308,8 +114,8 @@ export default function DailyInventorySummary() {
     }, [isReconcileMode, selectedDate, handleProcessReconciliation]);
 
     useEffect(() => {
-        fetchHistory();
-    }, [fetchHistory]);
+        // useInventoryReport handles fetching
+    }, []);
 
     const filtered = useMemo(() => {
         return summary.filter(p => {
@@ -362,7 +168,7 @@ export default function DailyInventorySummary() {
             <div className="flex flex-col lg:flex-row gap-8">
                 <div className="flex-shrink-0 w-full lg:w-80">
                     <div className="sticky top-6 space-y-6">
-                        <Calendar selectedDate={selectedDate} onDateSelect={setSelectedDate} activeDates={[format(new Date(), 'yyyy-MM-dd')]} />
+                        <Calendar selectedDate={selectedDate} onDateSelect={setSelectedDate} activeDates={[formatDate(new Date(), 'yyyy-MM-dd')]} />
 
                         <div className="bg-surface p-6 rounded-[32px] border border-border-default shadow-sm space-y-4">
                             <div className="flex items-center justify-between">
@@ -370,7 +176,7 @@ export default function DailyInventorySummary() {
                                 <RefreshCw size={12} className="text-brand-orange animate-spin-slow" />
                             </div>
                             <p className="text-[11px] text-text-secondary leading-relaxed font-medium">
-                                Reverse playback calculations start from real-time levels and mathematically undo every transaction back to <span className="text-text-primary font-black">{format(selectedDate, 'MMM d')}</span>.
+                                Reverse playback calculations start from real-time levels and mathematically undo every transaction back to <span className="text-text-primary font-black">{formatDate(selectedDate, 'MMM d')}</span>.
                             </p>
                         </div>
 
@@ -512,6 +318,25 @@ export default function DailyInventorySummary() {
                                                                          <span className="text-[12px]">↑</span> {t.quantity} TO {t.branch_name}
                                                                      </div>
                                                                  ))}
+                                                                 {(() => {
+                                                                     const inTransitOut = item.transfers?.filter(t => t.type === 'in_transit_out') || [];
+                                                                     const inTransitIn = item.transfers?.filter(t => t.type === 'in_transit_in') || [];
+                                                                     
+                                                                     return (
+                                                                         <>
+                                                                             {inTransitOut.map((t, i) => (
+                                                                                 <div key={i} className="flex items-center justify-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-600 text-[9px] font-black uppercase whitespace-nowrap border border-amber-500/20 shadow-sm mt-1 animate-pulse">
+                                                                                     <Truck size={10} /> {t.quantity} IN-TRANSIT TO {t.branch_name}
+                                                                                 </div>
+                                                                             ))}
+                                                                             {inTransitIn.map((t, i) => (
+                                                                                 <div key={i} className="flex items-center justify-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-600 text-[9px] font-black uppercase whitespace-nowrap border border-blue-500/20 shadow-sm mt-1 animate-pulse">
+                                                                                     <Truck size={10} /> {t.quantity} IN-TRANSIT FROM {t.branch_name}
+                                                                                 </div>
+                                                                             ))}
+                                                                         </>
+                                                                     );
+                                                                 })()}
                                                                  {item.outwards === 0 && <span className="text-text-muted/30 font-bold">0</span>}
                                                              </div>
                                                          );

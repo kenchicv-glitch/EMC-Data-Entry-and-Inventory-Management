@@ -1,165 +1,89 @@
-import { useEffect, useState, useCallback, Fragment } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useState, useMemo, Fragment } from 'react';
 import { supabase } from '../../shared/lib/supabase';
 import {
     Search, ChevronDown, ShoppingBag, Package, Download, Filter, CheckCircle2, Clock, Trash2, RotateCcw, Tag
 } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
-import PurchaseModal from './components/PurchaseModal';
 import Calendar from '../../features/reports/components/Calendar';
 import { useAuth } from '../../shared/hooks/useAuth';
-import { useBranch } from '../../shared/lib/BranchContext';
-
-interface Purchase {
-    id: string;
-    transaction_label?: string;
-    product_id: string;
-    quantity: number;
-    unit_price: number;
-    total_price: number;
-    date: string;
-    invoice_number: string;
-    supplier: string;
-    status: 'pending' | 'received';
-    received_date: string | null;
-    vat_amount: number;
-    discount_amount: number;
-    payment_status: 'unpaid' | 'partial' | 'paid';
-    payment_date: string | null;
-    purchase_type: 'supplier' | 'transfer';
-    products: {
-        name: string;
-    };
-}
-
-interface SupabasePurchase {
-    id: string;
-    transaction_label?: string;
-    product_id: string;
-    quantity: number;
-    unit_price: number;
-    total_price: number;
-    date: string;
-    invoice_number: string;
-    supplier: string;
-    status: 'pending' | 'received';
-    received_date: string | null;
-    vat_amount: number;
-    discount_amount: number;
-    payment_status: 'unpaid' | 'partial' | 'paid';
-    payment_date: string | null;
-    purchase_type: 'supplier' | 'transfer';
-    products: {
-        name: string;
-    };
-}
-
-interface GroupedPurchase {
-    invoice_number: string;
-    date: string;
-    supplier: string;
-    status: 'pending' | 'received';
-    payment_status: 'unpaid' | 'partial' | 'paid';
-    purchase_type: 'supplier' | 'transfer';
-    items: Purchase[];
-    total_base: number;
-    total_vat: number;
-    total_discount: number;
-    grand_total: number;
-    transaction_label: string | null;
-}
+import { usePurchases } from './hooks/usePurchases';
+import { useModal } from '../../shared/hooks/useModal';
+import { startOfMonth } from 'date-fns';
+import { type GroupedPurchase } from './types/purchase';
 
 export default function Purchases() {
     const { role } = useAuth();
-    const { activeBranchId } = useBranch();
-    const navigate = useNavigate();
-    const location = useLocation();
-    const [groupedPurchases, setGroupedPurchases] = useState<GroupedPurchase[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
     const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
         start: new Date(),
         end: new Date()
     });
+    const { openPurchaseModal } = useModal();
+    const {
+        purchases,
+        returns,
+        isLoading: hookLoading,
+        deletePurchases,
+        markPurchaseAsReceived,
+        markPurchaseAsPaid,
+        fetchPurchases
+    } = usePurchases(startOfMonth(dateRange.start).toISOString());
+
+    const [searchTerm, setSearchTerm] = useState('');
     const [isDateRangeActive, setIsDateRangeActive] = useState(false);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editData, setEditData] = useState<unknown>(null);
     const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [statusFilters, setStatusFilters] = useState<string[]>([]);
     const [paymentFilters, setPaymentFilters] = useState<string[]>([]);
     const [typeFilters, setTypeFilters] = useState<string[]>([]);
-    const [returnedInvoices, setReturnedInvoices] = useState<Set<string>>(new Set());
 
-    const fetchPurchases = useCallback(async (silent = false) => {
-        if (!silent) setLoading(true);
-        let purchasesQuery = supabase.from('purchases').select(`*, products(name)`).order('date', { ascending: false });
-        let returnsQuery = supabase.from('supplier_returns').select('invoice_number');
+    const returnedInvoices = useMemo(() => 
+        new Set(returns.map(r => r.invoice_number).filter(Boolean)),
+    [returns]);
 
-        if (activeBranchId) {
-            purchasesQuery = purchasesQuery.eq('branch_id', activeBranchId);
-            returnsQuery = returnsQuery.eq('branch_id', activeBranchId);
-        }
+    const groupedPurchases = useMemo(() => {
+        const groups: { [key: string]: GroupedPurchase } = {};
+        purchases.forEach(purchase => {
+            const key = purchase.invoice_number || `UNTRACKED-${purchase.id}`;
+            if (!groups[key]) {
+                groups[key] = {
+                    invoice_number: key,
+                    date: purchase.date,
+                    supplier: purchase.supplier || 'Unknown Supplier',
+                    status: 'received', // Default to received, will be updated if any item is pending
+                    payment_status: 'paid', // Default to paid, will be updated if any item is unpaid/partial
+                    purchase_type: purchase.purchase_type || 'supplier',
+                    items: [],
+                    total_base: 0,
+                    total_vat: 0,
+                    total_discount: 0,
+                    grand_total: 0,
+                    transaction_label: purchase.transaction_label || null,
+                    supplier_id: purchase.supplier_id || null
+                };
+            }
+            const group = groups[key];
+            group.items.push(purchase as any); // Cast to any to match Purchase type if SupabasePurchase is slightly different
+            group.total_base += purchase.total_price || 0;
+            group.total_vat += purchase.vat_amount || 0;
+            group.total_discount += purchase.discount_amount || 0;
+            if (purchase.status === 'pending') group.status = 'pending';
 
-        const [purchasesRes, returnsRes] = await Promise.all([
-            purchasesQuery,
-            returnsQuery
-        ]);
+            const pStatus = purchase.payment_status || 'unpaid';
+            if (pStatus === 'unpaid') {
+                group.payment_status = 'unpaid';
+            } else if (pStatus === 'partial' && group.payment_status !== 'unpaid') {
+                group.payment_status = 'partial';
+            }
+        });
 
-        if (returnsRes.data) {
-            setReturnedInvoices(new Set(returnsRes.data.map(r => r.invoice_number).filter(Boolean)));
-        }
+        Object.values(groups).forEach(group => {
+            group.grand_total = group.total_base + group.total_vat - group.total_discount;
+        });
 
-        const { data, error } = purchasesRes;
-
-        if (error) {
-            console.error('Error fetching purchases:', error);
-        } else {
-            const groups: { [key: string]: GroupedPurchase } = {};
-            (data as unknown as SupabasePurchase[]).forEach(purchase => {
-                const key = purchase.invoice_number || `UNTRACKED-${purchase.id}`;
-                if (!groups[key]) {
-                    groups[key] = {
-                        invoice_number: purchase.invoice_number,
-                        date: purchase.date,
-                        supplier: purchase.supplier || 'Unknown Supplier',
-                        status: 'received',
-                        payment_status: 'paid', // Default to paid, will be demoted
-                        purchase_type: purchase.purchase_type || 'supplier',
-                        items: [],
-                        total_base: 0,
-                        total_vat: 0,
-                        total_discount: 0,
-                        grand_total: 0,
-                        transaction_label: purchase.transaction_label || null
-                    };
-                }
-                const group = groups[key];
-                group.items.push(purchase);
-                group.total_base += purchase.total_price;
-                group.total_vat += purchase.vat_amount || 0;
-                group.total_discount += purchase.discount_amount || 0;
-                if (purchase.status === 'pending') group.status = 'pending';
-
-                // Track most restrictive payment status in group
-                const pStatus = purchase.payment_status || 'unpaid';
-                if (pStatus === 'unpaid') {
-                    group.payment_status = 'unpaid';
-                } else if (pStatus === 'partial' && group.payment_status === 'paid') {
-                    group.payment_status = 'partial';
-                }
-            });
-
-            Object.values(groups).forEach(group => {
-                group.grand_total = group.total_base - group.total_discount;
-            });
-
-            setGroupedPurchases(Object.values(groups).sort((a, b) =>
-                new Date(b.date).getTime() - new Date(a.date).getTime()
-            ));
-        }
-        setLoading(false);
-    }, [activeBranchId]);
+        return Object.values(groups).sort((a, b) =>
+            new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+    }, [purchases]);
 
     useEffect(() => {
         let mounted = true;
@@ -169,19 +93,12 @@ export default function Purchases() {
         return () => { mounted = false; supabase.removeChannel(channel); };
     }, [fetchPurchases]);
 
-    // Listen for global "P" shortcut to open purchase modal
-    // Global Shortcuts & Navigation Redirection
+    // Listen for global shortcuts and navigation state
     useEffect(() => {
-        const handleOpenModal = () => { setEditData(null); setIsModalOpen(true); };
-        window.addEventListener('open-purchase-modal', handleOpenModal);
-
-        if ((location.state as any)?.openModal) {
-            handleOpenModal();
-            navigate(location.pathname, { replace: true, state: {} });
-        }
-
-        return () => window.removeEventListener('open-purchase-modal', handleOpenModal);
-    }, [location.state, navigate, location.pathname]);
+        const handleRefresh = () => { fetchPurchases(true); };
+        window.addEventListener('refresh-data', handleRefresh);
+        return () => window.removeEventListener('refresh-data', handleRefresh);
+    }, [fetchPurchases]);
 
     const toggleExpand = (invoiceNumber: string) => {
         setExpandedInvoices(prev => {
@@ -194,15 +111,7 @@ export default function Purchases() {
 
     const handleMarkAsReceived = async (group: GroupedPurchase) => {
         try {
-            const { error: updateError } = await supabase
-                .from('purchases')
-                .update({
-                    status: 'received',
-                    received_date: new Date().toISOString()
-                })
-                .eq('invoice_number', group.invoice_number);
-
-            if (updateError) throw updateError;
+            await markPurchaseAsReceived(group.invoice_number);
             fetchPurchases(true);
         } catch (err) {
             console.error('Error marking as received:', err);
@@ -214,15 +123,7 @@ export default function Purchases() {
         if (!confirm(`Mark invoice ${group.invoice_number} as FULLY PAID?`)) return;
 
         try {
-            const { error } = await supabase
-                .from('purchases')
-                .update({
-                    payment_status: 'paid',
-                    payment_date: new Date().toISOString()
-                })
-                .eq('invoice_number', group.invoice_number);
-
-            if (error) throw error;
+            await markPurchaseAsPaid(group.invoice_number);
             fetchPurchases(true);
         } catch (error: unknown) {
             const err = error as Error;
@@ -231,7 +132,7 @@ export default function Purchases() {
         }
     };
 
-    const filteredPurchases = groupedPurchases.filter(group => {
+    const filteredPurchases = useMemo(() => groupedPurchases.filter(group => {
         const search = searchTerm.toLowerCase();
         const matchesSearch = (
             (group.invoice_number?.toLowerCase().includes(search) ?? false) ||
@@ -261,7 +162,7 @@ export default function Purchases() {
         const matchesType = typeFilters.length === 0 || typeFilters.includes(group.purchase_type || 'supplier');
 
         return matchesSearch && matchesDate && matchesStatus && matchesPayment && matchesType;
-    });
+    }), [groupedPurchases, searchTerm, dateRange, statusFilters, paymentFilters, typeFilters, returnedInvoices]);
 
     const activeDates = Array.from(new Set(groupedPurchases.map(s => format(new Date(s.date), 'yyyy-MM-dd'))));
 
@@ -285,45 +186,36 @@ export default function Purchases() {
     };
 
     const handleEditPurchase = (group: GroupedPurchase) => {
-        setEditData({
+        openPurchaseModal({
             invoiceNumber: group.invoice_number,
             supplier: group.supplier,
             status: group.status,
-            payment_status: group.payment_status,
-            payment_date: group.items[0].payment_date,
-            purchase_type: group.purchase_type,
+            paymentStatus: group.payment_status,
+            paymentDate: group.items[0].payment_date,
+            purchaseType: group.purchase_type,
+            supplierId: group.supplier_id,
             date: group.date,
             isVatEnabled: group.total_vat > 0,
             isDiscountEnabled: group.total_discount > 0,
             items: group.items.map(item => ({
                 product_id: item.product_id,
                 quantity: item.quantity,
-                unit_price: item.unit_price,
-                total_price: item.total_price,
+                unit_price: item.unit_price || 0,
+                total_price: item.total_price || 0,
                 name: item.products?.name
-            }))
+            })),
+            transactionLabel: group.transaction_label || undefined
         });
-        setIsModalOpen(true);
     };
 
     const handleDeleteInvoice = async (invoiceNumber: string) => {
         if (!window.confirm(`Are you sure you want to delete purchase ${invoiceNumber}? This will reverse inventory changes.`)) return;
 
-        setLoading(true);
         try {
-            // 1. Delete purchase records
-            const { error: deleteError } = await supabase
-                .from('purchases')
-                .delete()
-                .eq('invoice_number', invoiceNumber);
-
-            if (deleteError) throw deleteError;
-            fetchPurchases();
+            await deletePurchases(invoiceNumber);
         } catch (err) {
             console.error('Error deleting purchase:', err);
             alert('Error: ' + (err instanceof Error ? err.message : 'Unknown error'));
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -339,7 +231,7 @@ export default function Purchases() {
                 </div>
                 <div className="flex items-center gap-3">
                     <button className="flex items-center gap-2 bg-bg-surface border border-border-default text-text-secondary px-5 py-3 rounded-2xl font-bold text-sm hover:bg-bg-subtle transition-all shadow-sm"><Download size={18} /> Export</button>
-                    <button onClick={() => { setEditData(null); setIsModalOpen(true); }} className="flex items-center gap-2 bg-brand-red text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-brand-red-dark transition-all shadow-red active:scale-95"><ShoppingBag size={18} /> CREATE PURCHASE</button>
+                    <button onClick={() => openPurchaseModal()} className="flex items-center gap-2 bg-brand-red text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-brand-red-dark transition-all shadow-red active:scale-95"><ShoppingBag size={18} /> CREATE PURCHASE</button>
                 </div>
             </div>
 
@@ -492,7 +384,7 @@ export default function Purchases() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border-muted">
-                                    {loading ? (
+                                    {hookLoading ? (
                                         [1, 2, 3].map(i => <tr key={i} className="animate-pulse"><td colSpan={6} className="px-6 py-8"><div className="h-4 bg-bg-subtle rounded w-full"></div></td></tr>)
                                     ) : filteredPurchases.length > 0 ? (
                                         filteredPurchases.map((group) => {
@@ -614,7 +506,7 @@ export default function Purchases() {
                                                                                 </div>
                                                                                 <div className="text-right">
                                                                                     <p className="font-bold text-text-primary">x{item.quantity}</p>
-                                                                                    <p className="text-[10px] text-text-secondary font-data font-black">₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                                                                    <p className="text-[10px] text-text-secondary font-data font-black">₱{(item.total_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                                                                 </div>
                                                                             </div>
                                                                         ))}
@@ -637,8 +529,6 @@ export default function Purchases() {
                 </div>
             </div >
 
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            <PurchaseModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditData(null); }} onSuccess={() => { fetchPurchases(); setEditData(null); }} editData={editData as any} />
         </div >
     );
 }

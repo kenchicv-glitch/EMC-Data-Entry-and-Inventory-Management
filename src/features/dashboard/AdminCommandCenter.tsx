@@ -5,8 +5,9 @@ import { startOfDay, endOfDay, format } from 'date-fns';
 import Calendar from '../../features/reports/components/Calendar';
 import {
     TrendingUp, TrendingDown, DollarSign, ShoppingCart, Wallet, Package,
-    Activity, Building2, BarChart3, X
+    Activity, Building2, BarChart3, X, Eye, EyeOff
 } from 'lucide-react';
+import { ReportService } from '../../features/reports/services/reportService';
 
 interface BranchData {
     branchId: string;
@@ -39,6 +40,7 @@ export default function AdminCommandCenter() {
     const [activeTab, setActiveTab] = useState<'all' | 'sale' | 'purchase' | 'expense'>('all');
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const [selectedBranch, setSelectedBranch] = useState<string | null>(null); // null = all branches
+    const [includeVat, setIncludeVat] = useState(false);
 
     const fetchAllBranchData = useCallback(async (date?: Date) => {
         if (branches.length === 0) return;
@@ -53,11 +55,13 @@ export default function AdminCommandCenter() {
             const [
                 { data: salesData },
                 { data: purchasesData },
-                { data: expensesData }
+                { data: expensesData },
+                { data: refundsData },
+                { data: returnsData }
             ] = await Promise.all([
                 supabase
                     .from('sales')
-                    .select('id, total_price, quantity, cost_price, date, invoice_number, products(name)')
+                    .select('id, total_price, quantity, cost_price, vat_amount, discount_amount, date, invoice_number, products(name)')
                     .eq('branch_id', branch.id)
                     .gte('date', rangeStart)
                     .lte('date', rangeEnd)
@@ -75,17 +79,38 @@ export default function AdminCommandCenter() {
                     .eq('branch_id', branch.id)
                     .gte('date', rangeStart)
                     .lte('date', rangeEnd)
-                    .order('date', { ascending: false })
+                    .order('date', { ascending: false }),
+                supabase
+                    .from('customer_refunds')
+                    .select('id, total_price, vat_amount, date, invoice_number')
+                    .eq('branch_id', branch.id)
+                    .gte('date', rangeStart)
+                    .lte('date', rangeEnd),
+                supabase
+                    .from('supplier_returns')
+                    .select('id, quantity, cost_price, date')
+                    .eq('branch_id', branch.id)
+                    .gte('date', rangeStart)
+                    .lte('date', rangeEnd)
             ]);
 
             const sales = salesData || [];
             const purchases = purchasesData || [];
             const expenses = expensesData || [];
+            const refunds = refundsData || [];
+            const returns = returnsData || [];
 
-            const totalSales = sales.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0);
-            const totalCOGS = sales.reduce((sum: number, s: any) => sum + ((s.quantity || 0) * (s.cost_price || 0)), 0);
+            const metrics = ReportService.calculateProfitMetrics(
+                sales,
+                expenses,
+                refunds,
+                returns,
+                includeVat
+            );
+
+            const totalSales = metrics.totalRevenue;
             const totalPurchases = purchases.reduce((sum: number, p: any) => sum + ((p.total_price || 0) - (p.discount_amount || 0)), 0);
-            const totalExpenses = expenses.reduce((sum: number, e: any) => sum + (e.amount || 0), 0);
+            const totalExpenses = metrics.totalExpenses;
 
             // Build activity feed
             sales.forEach((s: any) => {
@@ -124,7 +149,7 @@ export default function AdminCommandCenter() {
                 sales: totalSales,
                 purchases: totalPurchases,
                 expenses: totalExpenses,
-                netProfit: totalSales - totalCOGS - totalExpenses,
+                netProfit: metrics.netProfit,
                 salesCount: sales.length,
                 purchasesCount: purchases.length,
                 expensesCount: expenses.length
@@ -136,11 +161,13 @@ export default function AdminCommandCenter() {
         setBranchData(results);
         setActivities(allActivities);
         setLoading(false);
-    }, [branches, selectedDate]);
+    }, [branches, selectedDate, includeVat]);
 
     useEffect(() => {
-        fetchAllBranchData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        const load = async () => {
+            await fetchAllBranchData();
+        };
+        load();
     }, [fetchAllBranchData]);
 
     const handleDateSelect = (date: Date) => {
@@ -196,12 +223,26 @@ export default function AdminCommandCenter() {
                         <p className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">{format(selectedDate, 'EEEE, MMMM d yyyy')}</p>
                     </div>
                 </div>
-                <button
-                    onClick={() => fetchAllBranchData()}
-                    className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-bg-subtle hover:bg-bg-muted border border-border-default text-text-secondary text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
-                >
-                    <Activity size={14} /> Refresh
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setIncludeVat(!includeVat)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-2xl border transition-all active:scale-95 text-[10px] font-black uppercase tracking-widest ${
+                            includeVat 
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600' 
+                            : 'bg-bg-subtle border-border-default text-text-secondary hover:bg-bg-muted'
+                        }`}
+                        title={includeVat ? "Showing VAT Inclusive Profit" : "Showing VAT Exclusive Profit"}
+                    >
+                        {includeVat ? <Eye size={14} /> : <EyeOff size={14} />}
+                        VAT {includeVat ? 'INC' : 'EXC'}
+                    </button>
+                    <button
+                        onClick={() => fetchAllBranchData()}
+                        className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-bg-subtle hover:bg-bg-muted border border-border-default text-text-secondary text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
+                    >
+                        <Activity size={14} /> Refresh
+                    </button>
+                </div>
             </div>
 
             <div className="flex flex-col lg:flex-row gap-5">

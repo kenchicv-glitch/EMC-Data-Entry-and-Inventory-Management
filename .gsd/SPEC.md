@@ -3,28 +3,26 @@
 > **Status**: `FINALIZED`
 
 ## Vision
-To build a seamless, real-time coordination layer for the EMC Retail OS that enables branches to request, transfer, and receive stock efficiently. This system will replace manual communication with a structured "Request → Approve → Ship → Receive" workflow, ensuring data consistency and inventory accuracy across all locations.
+To provide a highly accurate, real-time financial reporting layer that correctly reflects business profitability. This includes precise calculation of Gross and Net profits by ensuring revenue figures are correctly handled (with/without VAT) based on user preference.
 
 ## Goals
-1. **Inter-Branch Stock Transfers**: Implement a robust workflow for moving inventory between branches with clear status tracking (Pending, Approved, Shipped, Received).
-2. **Real-time Notifications**: Integrate a notification system into the global UI (Bell icon) to alert encoders in target branches of new requests or status updates.
-3. **Data Integrity & Consistency**: Ensure that every transfer accurately reflects in the `products` table stock levels at each stage (e.g., deducting on ship, adding on receive) without reconciliation errors.
+1. **Accurate Profit Computation**: Fix the current bleed in profit analytics where VAT subtraction leads to lower-than-expected profit figures.
+2. **Flexible Revenue Analysis**: Implement a "VAT Inclusive" toggle for the revenue dashboard to allow owners to see both raw SRP-based revenue and net tax-exclusive revenue.
+3. **Consistent Cost Tracking**: Ensure COGS (Cost of Goods Sold) is accurately matched against revenue periods.
 
 ## Non-Goals (Out of Scope)
-- Automatic reordering from suppliers (covered by a separate procurement module).
-- Physical logistics/shipping courier integration.
-- General user-to-user chat system.
+- Comprehensive tax filing/submission (BIR-specific forms).
+- Automated bank reconciliation.
 
 ## Users
-- **Encoders**: Primary users who will request stock and process incoming/outgoing transfers.
-- **Owners/Admins**: Users who will monitor global stock movement and approve/audit transfers.
+- **Owners**: Main consumers of profit analytics to make business decisions.
+- **Accountants**: Users who need to see the breakdown of VAT and net sales.
 
 ## Constraints
-- **Technical**: Must support real-time updates using Supabase Realtime/Triggers.
-- **Consistency**: Must adhere strictly to the existing Excel-based category hierarchy and product naming conventions.
+- **Financial Precision**: Must match the user's manual calculations (e.g., SRP 7650 - COGS 6375 = Gross Profit 1275).
+- **UI Consistency**: Must maintain the existing premium aesthetics while adding new controls.
 
 ## Success Criteria
-- [ ] Users receive a visual notification (Bell icon update) within 2 seconds of a transfer request being made.
-- [ ] Stock levels in the `products` table correctly update at each stage of the transfer lifecycle.
-- [ ] A dedicated "Transfers" dashboard or modal allows users to track all active and historical movements.
-- [ ] 0 items lost in transit due to system-level data desync.
+- [ ] Profit Analysis shows Gross Profit of 1275 for SRP 7650 and COGS 6375.
+- [ ] A functional toggle in the Net Revenue card switches between VAT-inclusive and VAT-exclusive views.
+- [ ] Calculations remain consistent across category-based breakdown charts.

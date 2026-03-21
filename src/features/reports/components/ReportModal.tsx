@@ -1,18 +1,11 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../../shared/lib/supabase';
-import { format } from 'date-fns';
 import { X, FileText, Download, AlertTriangle, Loader2 } from 'lucide-react';
 import Calendar from './Calendar';
 import { exportToCSV } from '../../../shared/lib/exportUtils';
-
-interface ReportRow {
-    Section?: string;
-    Detail?: string;
-    Amount?: string | number;
-    Info?: string;
-    [key: string]: string | number | undefined;
-}
+import { ReportService } from '../services/reportService';
+import { formatDate } from '../../../shared/lib/formatUtils';
 
 interface ReportModalProps {
     isOpen: boolean;
@@ -39,15 +32,16 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
         setLoading(true);
         setError(null);
 
-        const dateStr = format(selectedDate, 'yyyy-MM-dd');
+        const dateStr = formatDate(selectedDate, 'yyyy-MM-dd');
+        const displayDate = formatDate(selectedDate, 'MMMM dd, yyyy');
 
         try {
             // Fetch Sales
             const { data: sales, error: salesError } = await supabase
                 .from('sales')
                 .select('invoice_number, total_price, quantity, date, products(name)')
-                .gte('date', dateStr)
-                .lte('date', dateStr);
+                .gte('date', `${dateStr}T00:00:00`)
+                .lte('date', `${dateStr}T23:59:59`);
 
             if (salesError) throw salesError;
 
@@ -55,8 +49,8 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
             const { data: expenses, error: expensesError } = await supabase
                 .from('expenses')
                 .select('category, amount, description, date')
-                .gte('date', dateStr)
-                .lte('date', dateStr);
+                .gte('date', `${dateStr}T00:00:00`)
+                .lte('date', `${dateStr}T23:59:59`);
 
             if (expensesError) throw expensesError;
 
@@ -64,64 +58,17 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
             const { data: purchases, error: purchasesError } = await supabase
                 .from('purchases')
                 .select('total_price, quantity, date, products(name)')
-                .gte('date', dateStr)
-                .lte('date', dateStr);
+                .gte('date', `${dateStr}T00:00:00`)
+                .lte('date', `${dateStr}T23:59:59`);
 
             if (purchasesError) throw purchasesError;
 
-            const reportData: ReportRow[] = [];
-            let totalSales = 0;
-            let totalExpenses = 0;
-            let totalPurchases = 0;
-
-            // Summary Section
-            reportData.push({ Section: 'DAILY SUMMARY', Detail: format(selectedDate, 'MMMM dd, yyyy') });
-            reportData.push({});
-
-            // Sales Section
-            reportData.push({ Section: 'SALES' });
-            sales?.forEach(s => {
-                totalSales += s.total_price;
-                reportData.push({
-                    Detail: (s.products as any)?.name || 'Unknown',
-                    Amount: s.total_price,
-                    Info: `Inv: ${s.invoice_number}, Qty: ${s.quantity}`
-                });
-            });
-            reportData.push({ Detail: 'TOTAL SALES', Amount: totalSales });
-            reportData.push({});
-
-            // Expenses Section
-            reportData.push({ Section: 'EXPENSES' });
-            expenses?.forEach(e => {
-                totalExpenses += e.amount;
-                reportData.push({
-                    Detail: e.category,
-                    Amount: e.amount,
-                    Info: e.description || ''
-                });
-            });
-            reportData.push({ Detail: 'TOTAL EXPENSES', Amount: totalExpenses });
-            reportData.push({});
-
-            // Purchases Section
-            reportData.push({ Section: 'PURCHASES' });
-            purchases?.forEach(p => {
-                totalPurchases += p.total_price;
-                reportData.push({
-                    Detail: (p.products as any)?.name || 'Unknown',
-                    Amount: p.total_price,
-                    Info: `Qty: ${p.quantity}`
-                });
-            });
-            reportData.push({ Detail: 'TOTAL PURCHASES', Amount: totalPurchases });
-            reportData.push({});
-
-            // Net Section
-            const netCash = totalSales - totalExpenses;
-            reportData.push({ Section: 'NET POSITION' });
-            reportData.push({ Detail: 'NET CASH (Sales - Expenses)', Amount: netCash });
-            reportData.push({ Detail: 'NET FLOW (Sales - Expenses - Purchases)', Amount: netCash - totalPurchases });
+            const reportData = ReportService.prepareDailyReport(
+                displayDate,
+                sales || [],
+                purchases || [],
+                expenses || []
+            );
 
             exportToCSV(reportData, `Daily_Report_${dateStr}`);
         } catch (err) {

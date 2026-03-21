@@ -1,18 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { useWorkspace } from '../lib/WorkspaceContext';
+import { useWorkspace } from '../hooks/useWorkspace';
 import {
     LayoutDashboard, ShoppingCart, Package, Truck,
     RotateCcw, LogOut, Bell, ClipboardList,
     ChevronDown, Menu, X, Tag, Wallet,
     Calendar, Settings as SettingsIcon, LineChart,
-    Users, ArrowLeft, FileBarChart, Calculator, Building2
+    Users, ArrowLeft, ArrowRightLeft, FileBarChart, Calculator, Building2
 } from 'lucide-react';
 import logo from '../../assets/brand-logo.png';
 import ThemeToggle from './ThemeToggle';
-import type { Workspace } from '../lib/WorkspaceContext';
-import { useBranch } from '../lib/BranchContext';
+import type { Workspace } from '../lib/WorkspaceContextExports';
+import type { Branch } from '../lib/BranchContextExports';
+import { useBranch } from '../hooks/useBranch';
+import { usePermissions } from '../hooks/usePermissions';
+import { useNotifications } from '../hooks/useNotifications';
+import NotificationModal from './NotificationModal';
+import { useModal } from '../context/ModalContext';
+import SalesModal from '../../features/sales/components/SalesModal';
+import PurchaseModal from '../../features/purchases/components/PurchaseModal';
 
 interface SidebarLinkProps {
     to: string;
@@ -58,6 +65,7 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ role, userEmail, userInitials, signOut, setIsSidebarOpen, openMenus, toggleMenu, currentWorkspace, handleSwitchWorkspace, displayName }: SidebarProps) => {
+    const { canAccessMaster } = usePermissions();
     
     return (
     <aside className="w-64 flex-shrink-0 bg-brand-charcoal flex flex-col h-full border-r border-white/5">
@@ -92,6 +100,7 @@ const Sidebar = ({ role, userEmail, userInitials, signOut, setIsSidebarOpen, ope
                                 <SidebarLink to="/sales" label="Sales" icon={ShoppingCart} onClick={() => setIsSidebarOpen(false)} />
                                 <SidebarLink to="/purchases" label="Purchases" icon={Truck} onClick={() => setIsSidebarOpen(false)} />
                                 <SidebarLink to="/inventory" label="Inventory" icon={Package} onClick={() => setIsSidebarOpen(false)} />
+                                <SidebarLink to="/transfers" label="Transfers" icon={ArrowRightLeft} onClick={() => setIsSidebarOpen(false)} />
                             </div>
                         )}
                     </div>
@@ -144,7 +153,7 @@ const Sidebar = ({ role, userEmail, userInitials, signOut, setIsSidebarOpen, ope
                 </div>
             )}
 
-            {currentWorkspace === 'admin' && (
+            {currentWorkspace === 'admin' && canAccessMaster && (
                 <div className="space-y-1">
                     <p className="px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">Owner's Space</p>
                     <div className="space-y-1 mt-1 animate-slide-up">
@@ -195,10 +204,21 @@ export default function Layout() {
     const { user, role, signOut, loading: authLoading, displayName } = useAuth();
     const { branches, activeBranchId, setActiveBranchId, currentBranchName, loading: branchLoading } = useBranch();
     const { currentWorkspace, setWorkspace } = useWorkspace();
+    const { canAccessMaster } = usePermissions();
     const loading = authLoading || branchLoading;
     const navigate = useNavigate();
     const location = useLocation();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+    const { 
+        salesModal, 
+        purchaseModal, 
+        openSalesModal, 
+        closeSalesModal, 
+        openPurchaseModal, 
+        closePurchaseModal 
+    } = useModal();
+    const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
 
     const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
         overview: true,
@@ -228,19 +248,11 @@ export default function Layout() {
                 switch (e.key.toLowerCase()) {
                     case 'n':
                         e.preventDefault();
-                        if (location.pathname !== '/sales') {
-                            navigate('/sales', { state: { openModal: true } });
-                        } else {
-                            window.dispatchEvent(new CustomEvent('open-sales-modal'));
-                        }
+                        openSalesModal();
                         break;
                     case 'p':
                         e.preventDefault();
-                        if (location.pathname !== '/purchases') {
-                            navigate('/purchases', { state: { openModal: true } });
-                        } else {
-                            window.dispatchEvent(new CustomEvent('open-purchase-modal'));
-                        }
+                        openPurchaseModal();
                         break;
                 }
             }
@@ -374,19 +386,17 @@ export default function Layout() {
                         </button>
                         <div className="hidden lg:flex flex-col">
                             <h2 className="text-xs font-black text-text-muted uppercase tracking-[0.2em]">{currentWorkspace === 'systems' ? 'Systems Overview' : currentWorkspace === 'bir' ? 'BIR & Compliance' : "Owner's Space"}</h2>
-                            {role === 'owner' ? (
+                            {canAccessMaster ? (
                                 <div className="relative group">
                                     <select 
                                         value={activeBranchId || ''} 
                                         onChange={(e) => {
                                             setActiveBranchId(e.target.value);
-                                            // Force reload to ensure all queries re-fetch with the new branch ID
-                                            window.location.reload();
                                         }}
                                         className="appearance-none bg-transparent text-sm font-bold text-text-primary pr-8 outline-none cursor-pointer hover:text-brand-red transition-colors"
                                     >
                                         <option value="" disabled>Select Branch</option>
-                                        {branches.map(b => (
+                                        {branches.map((b: Branch) => (
                                             <option key={b.id} value={b.id}>{b.name}</option>
                                         ))}
                                     </select>
@@ -414,19 +424,64 @@ export default function Layout() {
                             <div className="w-9 h-9 rounded-xl flex items-center justify-center text-text-muted hover:bg-bg-subtle shadow-sm cursor-pointer transition-all" title="Checklist">
                                 <ClipboardList size={18} />
                             </div>
-                            <div className="relative w-9 h-9 rounded-xl flex items-center justify-center text-text-muted hover:bg-bg-subtle hover:text-brand-red shadow-sm cursor-pointer transition-all" title="Notifications">
+                             <div 
+                                onClick={() => setIsNotificationModalOpen(true)}
+                                className="relative w-9 h-9 rounded-xl flex items-center justify-center text-text-muted hover:bg-bg-subtle hover:text-brand-red shadow-sm cursor-pointer transition-all" 
+                                title="Notifications"
+                            >
                                 <Bell size={18} />
-                                <span className="absolute top-2 right-2 w-2 h-2 bg-brand-orange rounded-full border-2 border-bg-surface animate-pulse" />
+                                {unreadCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-brand-red text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-red animate-bounce ring-2 ring-bg-surface">
+                                        {unreadCount > 99 ? '99+' : unreadCount}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
                 </header>
 
+                <NotificationModal 
+                    isOpen={isNotificationModalOpen}
+                    onClose={() => setIsNotificationModalOpen(false)}
+                    notifications={notifications}
+                    onMarkAsRead={markAsRead}
+                    onMarkAllAsRead={markAllAsRead}
+                    onDeleteNotification={deleteNotification}
+                />
+
                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-bg-base/50">
-                    <div className="p-8 lg:p-10 max-w-[1600px] mx-auto animate-page-entry" key={location.pathname}>
-                        <Outlet />
+                    <div 
+                        key={location.pathname}
+                        className="p-8 lg:p-10 max-w-[1600px] mx-auto animate-page-entry"
+                    >
+                        <Suspense fallback={
+                            <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+                                <div className="w-12 h-12 border-4 border-brand-red/20 border-t-brand-red rounded-full animate-spin" />
+                                <p className="text-xs font-black text-text-muted uppercase tracking-widest">Loading Dashboard...</p>
+                            </div>
+                        }>
+                            <Outlet />
+                        </Suspense>
                     </div>
                 </div>
+
+                <SalesModal 
+                    isOpen={salesModal.isOpen}
+                    onClose={closeSalesModal}
+                    editData={salesModal.editData}
+                    onSuccess={() => {
+                        window.dispatchEvent(new CustomEvent('refresh-data'));
+                    }}
+                />
+
+                <PurchaseModal 
+                    isOpen={purchaseModal.isOpen}
+                    onClose={closePurchaseModal}
+                    editData={purchaseModal.editData}
+                    onSuccess={() => {
+                        window.dispatchEvent(new CustomEvent('refresh-data'));
+                    }}
+                />
             </main>
         </div>
     );

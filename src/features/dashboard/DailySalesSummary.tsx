@@ -7,10 +7,10 @@ import {
 } from 'date-fns';
 import {
     DollarSign, ArrowUpRight, ArrowDownRight,
-    RefreshCw, Download, Calendar as CalendarIcon, TrendingUp, ChevronLeft, ChevronRight, ShoppingCart, Wallet
+    RefreshCw, Download, Calendar as CalendarIcon, TrendingUp, ChevronLeft, ChevronRight, ShoppingCart, Wallet, ArrowRightLeft
 } from 'lucide-react';
 import { exportToCSV } from '../../shared/lib/exportUtils';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 
 interface DailyStats {
     date: string;
@@ -19,6 +19,13 @@ interface DailyStats {
     expenses: number;
     refunds: number;
     returns: number;
+    transfersIn: number;
+    transfersOut: number;
+}
+
+interface TransferItem {
+    sku: string;
+    quantity: number;
 }
 
 export default function DailySalesSummary() {
@@ -41,6 +48,11 @@ export default function DailySalesSummary() {
             let expensesQuery = supabase.from('expenses').select('amount, date').gte('date', startStr).lte('date', endStr);
             let refundsQuery = supabase.from('customer_refunds').select('total_price, date').gte('date', startStr).lte('date', endStr);
             let returnsQuery = supabase.from('supplier_returns').select('total_price, date').gte('date', startStr).lte('date', endStr);
+            const transfersQuery = supabase.from('stock_transfers')
+                .select('items, created_at, source_branch_id, destination_branch_id, status, shipped_at, received_at')
+                .or(`source_branch_id.eq.${activeBranchId},destination_branch_id.eq.${activeBranchId}`)
+                .neq('status', 'cancelled')
+                .or(`shipped_at.gte.${startStr},shipped_at.lte.${endStr}T23:59:59,received_at.gte.${startStr},received_at.lte.${endStr}T23:59:59`);
 
             if (activeBranchId) {
                 salesQuery = salesQuery.eq('branch_id', activeBranchId);
@@ -50,12 +62,13 @@ export default function DailySalesSummary() {
                 returnsQuery = returnsQuery.eq('branch_id', activeBranchId);
             }
 
-            const [salesRes, purchasesRes, expensesRes, refundsRes, returnsRes] = await Promise.all([
+            const [salesRes, purchasesRes, expensesRes, refundsRes, returnsRes, transfersRes] = await Promise.all([
                 salesQuery,
                 purchasesQuery,
                 expensesQuery,
                 refundsQuery,
-                returnsQuery
+                returnsQuery,
+                transfersQuery
             ]);
 
             const newStats: Record<string, DailyStats> = {};
@@ -63,32 +76,47 @@ export default function DailySalesSummary() {
 
             salesRes.data?.forEach(s => {
                 const d = getD(s.date);
-                if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0 };
+                if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0, transfersIn: 0, transfersOut: 0 };
                 newStats[d].sales += s.total_price || 0;
             });
 
             purchasesRes.data?.forEach(p => {
                 const d = getD(p.date);
-                if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0 };
+                if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0, transfersIn: 0, transfersOut: 0 };
                 newStats[d].purchases += p.total_price || 0;
             });
 
             expensesRes.data?.forEach(e => {
                 const d = getD(e.date);
-                if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0 };
+                if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0, transfersIn: 0, transfersOut: 0 };
                 newStats[d].expenses += e.amount || 0;
             });
 
             refundsRes.data?.forEach(r => {
                 const d = getD(r.date);
-                if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0 };
+                if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0, transfersIn: 0, transfersOut: 0 };
                 newStats[d].refunds += r.total_price || 0;
             });
 
             returnsRes.data?.forEach(r => {
                 const d = getD(r.date);
-                if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0 };
+                if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0, transfersIn: 0, transfersOut: 0 };
                 newStats[d].returns += r.total_price || 0;
+            });
+
+            transfersRes.data?.forEach(t => {
+                const itemsCount = (t.items as TransferItem[])?.reduce((a, it) => a + (it.quantity || 0), 0) || 0;
+
+                if (String(t.source_branch_id) === String(activeBranchId) && t.shipped_at) {
+                    const d = getD(t.shipped_at);
+                    if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0, transfersIn: 0, transfersOut: 0 };
+                    newStats[d].transfersOut += itemsCount;
+                }
+                if (String(t.destination_branch_id) === String(activeBranchId) && t.received_at) {
+                    const d = getD(t.received_at);
+                    if (!newStats[d]) newStats[d] = { date: d, sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0, transfersIn: 0, transfersOut: 0 };
+                    newStats[d].transfersIn += itemsCount;
+                }
             });
 
             setStats(newStats);
@@ -97,7 +125,7 @@ export default function DailySalesSummary() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [activeBranchId]);
 
     useEffect(() => {
         fetchMonthlyData(currentMonth);
@@ -124,7 +152,7 @@ export default function DailySalesSummary() {
 
     const selectedStats = stats[format(selectedDate, 'yyyy-MM-dd')] || {
         date: format(selectedDate, 'yyyy-MM-dd'),
-        sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0
+        sales: 0, purchases: 0, expenses: 0, refunds: 0, returns: 0, transfersIn: 0, transfersOut: 0
     };
 
     const netCashflow = selectedStats.sales - selectedStats.purchases - selectedStats.expenses - selectedStats.refunds + selectedStats.returns;
@@ -256,6 +284,23 @@ export default function DailySalesSummary() {
                                 total={Math.max(selectedStats.sales, selectedStats.purchases, selectedStats.expenses, selectedStats.refunds, selectedStats.returns, 1)}
                                 prevValue={prevDayStats?.returns}
                             />
+                            
+                            <div className="pt-2 flex gap-3">
+                                <div className="flex-1 bg-emerald-500/5 rounded-2xl p-3 border border-emerald-500/10">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <ArrowRightLeft size={14} className="text-emerald-600" />
+                                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Incoming</span>
+                                    </div>
+                                    <p className="text-lg font-black font-data text-emerald-700">{selectedStats.transfersIn} <span className="text-[9px] font-bold opacity-60">PCS</span></p>
+                                </div>
+                                <div className="flex-1 bg-red-500/5 rounded-2xl p-3 border border-red-500/10">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <ArrowRightLeft size={14} className="text-red-600" />
+                                        <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">Outgoing</span>
+                                    </div>
+                                    <p className="text-lg font-black font-data text-red-700">{selectedStats.transfersOut} <span className="text-[9px] font-bold opacity-60">PCS</span></p>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Net Cashflow with Status */}

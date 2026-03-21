@@ -1,6 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useBranch } from '../hooks/useBranch';
+import { queryKeys } from '../lib/queryKeys';
+import { transferService } from '../services/transferService';
 
 export interface TransferItem {
     id?: string;
@@ -17,7 +20,7 @@ export interface StockTransfer {
     product_sku: string;
     product_name: string;
     quantity: number;
-    items?: TransferItem[]; // For multi-item transfers
+    items?: TransferItem[];
     status: 'pending' | 'approved' | 'shipped' | 'received' | 'cancelled';
     requested_by: string;
     approved_by?: string;
@@ -30,45 +33,35 @@ export interface StockTransfer {
 }
 
 export function useTransfers() {
+    const queryClient = useQueryClient();
     const { activeBranchId } = useBranch();
-    const [transfers, setTransfers] = useState<StockTransfer[]>([]);
-    const [loading, setLoading] = useState(true);
 
-    const fetchTransfers = useCallback(async () => {
-        if (!activeBranchId) return;
-        
-        setLoading(true);
-        // Fetch both directions. Note: source is requester, destination is supplier.
-        const { data, error } = await supabase
-            .from('stock_transfers')
-            .select(`
-                *,
-                source:source_branch_id(name),
-                destination:destination_branch_id(name)
-            `)
-            .or(`source_branch_id.eq.${activeBranchId},destination_branch_id.eq.${activeBranchId}`)
-            .order('created_at', { ascending: false });
+    const transfersQuery = useQuery({
+        queryKey: queryKeys.transfers.list(activeBranchId),
+        queryFn: () => transferService.getAll(activeBranchId),
+        enabled: !!activeBranchId,
+    });
 
-        if (error) {
-            console.error('Error fetching transfers:', error);
-        } else {
-            const formatted: StockTransfer[] = (data || []).map((t) => ({
-                ...t,
-                source_branch_name: (t.source as { name: string })?.name,
-                destination_branch_name: (t.destination as { name: string })?.name
-            }));
-            setTransfers(formatted);
-        }
-        setLoading(false);
-    }, [activeBranchId]);
+    const createTransferMutation = useMutation({
+        mutationFn: (newTransfer: Omit<StockTransfer, 'id' | 'created_at' | 'updated_at' | 'status'>) =>
+            transferService.create(newTransfer),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+        },
+    });
+
+    const updateStatusMutation = useMutation({
+        mutationFn: ({ id, status, remarks }: { id: string; status: StockTransfer['status']; remarks?: string }) =>
+            transferService.updateStatus(id, status, remarks),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
+        },
+    });
 
     useEffect(() => {
-        // Use a small delay to avoid "Calling setState synchronously within an effect" lint error
-        const timer = setTimeout(() => {
-            fetchTransfers();
-        }, 0);
+        if (!activeBranchId) return;
 
-        // Real-time subscription
+        // Real-time subscription for reactive UI
         const channel = supabase
             .channel('stock_transfers_changes')
             .on('postgres_changes', { 
@@ -76,15 +69,23 @@ export function useTransfers() {
                 schema: 'public', 
                 table: 'stock_transfers' 
             }, () => {
-                fetchTransfers();
+                queryClient.invalidateQueries({ queryKey: queryKeys.transfers.all });
             })
             .subscribe();
 
         return () => {
-            clearTimeout(timer);
             supabase.removeChannel(channel);
         };
-    }, [fetchTransfers]);
+    }, [activeBranchId, queryClient]);
 
-    return { transfers, loading, refresh: fetchTransfers };
+    return { 
+        transfers: transfersQuery.data ?? [], 
+        loading: transfersQuery.isLoading, 
+        refresh: () => queryClient.invalidateQueries({ queryKey: queryKeys.transfers.list(activeBranchId) }),
+        createTransfer: createTransferMutation.mutateAsync,
+        updateStatus: updateStatusMutation.mutateAsync,
+        isCreating: createTransferMutation.isPending,
+        isUpdating: updateStatusMutation.isPending,
+        error: transfersQuery.error
+    };
 }

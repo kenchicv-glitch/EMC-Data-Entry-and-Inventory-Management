@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '../../shared/lib/supabase';
 import { isSameDay, startOfDay, endOfDay, format } from 'date-fns';
-import { useBranch } from '../../shared/lib/BranchContext';
+import { useBranch } from '../../shared/hooks/useBranch';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, AreaChart, Area
@@ -12,11 +12,12 @@ import {
     DollarSign, Package, ArrowUpRight, ArrowDownRight,
     Clock,
     Plus, ShoppingCart, LayoutDashboard, RotateCcw,
-    Lock, CheckCircle2, Zap, BarChart3, TrendingUp
+    Zap, BarChart3, TrendingUp
 } from 'lucide-react';
 import { useTheme } from '../../shared/hooks/useTheme';
 import ProductModal from '../inventory/components/ProductModal';
-import SalesModal from '../sales/components/SalesModal';
+import type { Product as ModalProduct } from '../inventory/types/product';
+import SalesModal, { type SalesModalProps } from '../sales/components/SalesModal';
 import ReportModal from '../../features/reports/components/ReportModal';
 import Calendar from '../../features/reports/components/Calendar';
 
@@ -66,6 +67,7 @@ interface SupabasePurchase {
     date: string;
 }
 
+
 export default function Dashboard() {
     const [stats, setStats] = useState<DailyStat>({ totalSales: 0, itemsSold: 0, transactionCount: 0, totalPurchases: 0, totalRefunds: 0 });
     const [prevStats, setPrevStats] = useState<DailyStat>({ totalSales: 0, itemsSold: 0, transactionCount: 0, totalPurchases: 0, totalRefunds: 0 });
@@ -83,9 +85,7 @@ export default function Dashboard() {
     const [selectedLowStockProduct, setSelectedLowStockProduct] = useState<LowStockItem | null>(null);
     const [isLowStockModalOpen, setIsLowStockModalOpen] = useState(false);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-    const [isClosing, setIsClosing] = useState(false);
-    const [isDayClosed, setIsDayClosed] = useState(false);
-    const [selectedSaleForEdit, setSelectedSaleForEdit] = useState<any>(null);
+    const [selectedSaleForEdit, setSelectedSaleForEdit] = useState<SalesModalProps['editData']>();
     const [isSalesModalOpen, setIsSalesModalOpen] = useState(false);
     const navigate = useNavigate();
     const { theme } = useTheme();
@@ -220,18 +220,6 @@ export default function Dashboard() {
         setWeeklyData(chartData);
         setLowStockItems((lowStock as LowStockItem[]) || []);
         setRecentSales((recent as unknown as RecentSale[]) || []);
-        let closingQuery = supabase
-            .from('daily_closings')
-            .select('*')
-            .eq('date', format(rangeStart, 'yyyy-MM-dd'));
-
-        if (activeBranchId) {
-            closingQuery = closingQuery.eq('branch_id', activeBranchId);
-        }
-
-        const { data: closing } = await closingQuery.maybeSingle();
-
-        setIsDayClosed(!!closing);
         setLoading(false);
     }, [isDateRangeActive, dateRange, activeBranchId]);
 
@@ -242,9 +230,9 @@ export default function Dashboard() {
         };
         load();
         const channel = supabase.channel('dashboard_updates')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => { if (mounted) fetchDashboardData(); })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => { if (mounted) fetchDashboardData(); })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => { if (mounted) fetchDashboardData(); })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => { if (mounted) { const reload = async () => await fetchDashboardData(); reload(); } })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => { if (mounted) { const reload = async () => await fetchDashboardData(); reload(); } })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => { if (mounted) { const reload = async () => await fetchDashboardData(); reload(); } })
             .subscribe();
         return () => {
             mounted = false;
@@ -277,53 +265,11 @@ export default function Dashboard() {
     }, []);
 
 
-    const getTrend = useCallback((current: number, previous: number) => {
-        if (previous === 0) return current > 0 ? 100 : 0;
-        return ((current - previous) / previous) * 100;
-    }, []);
+    const revenueTrend = useMemo(() => {
+        if (!prevStats.totalSales) return 0;
+        return ((stats.totalSales - prevStats.totalSales) / prevStats.totalSales) * 100;
+    }, [stats.totalSales, prevStats.totalSales]);
 
-    const revenueTrend = useMemo(() => getTrend(stats.totalSales, prevStats.totalSales), [stats.totalSales, prevStats.totalSales, getTrend]);
-
-    const handleCloseDay = async () => {
-        if (isDayClosed) return;
-        if (!window.confirm('Are you sure you want to close the register for today? This will finalize all transactions.')) return;
-
-        setIsClosing(true);
-        try {
-            const today = format(dateRange.start, 'yyyy-MM-dd');
-
-            // 1. Finalize transactions
-            let sFinQuery = supabase.from('sales').update({ is_finalized: true }).eq('is_finalized', false).gte('date', startOfDay(dateRange.start).toISOString()).lte('date', endOfDay(dateRange.start).toISOString());
-            let pFinQuery = supabase.from('purchases').update({ is_finalized: true }).eq('is_finalized', false).gte('date', startOfDay(dateRange.start).toISOString()).lte('date', endOfDay(dateRange.start).toISOString());
-
-            if (activeBranchId) {
-                sFinQuery = sFinQuery.eq('branch_id', activeBranchId);
-                pFinQuery = pFinQuery.eq('branch_id', activeBranchId);
-            }
-
-            await Promise.all([
-                sFinQuery,
-                pFinQuery
-            ]);
-
-            // 2. Create closing entry
-            const { error } = await supabase.from('daily_closings').insert({
-                date: today,
-                total_sales: stats.totalSales,
-                closed_by: (await supabase.auth.getUser()).data.user?.id,
-                branch_id: activeBranchId
-            });
-
-            if (error) throw error;
-            setIsDayClosed(true);
-            alert('Register closed successfully for ' + today);
-        } catch (err) {
-            console.error('Closing failed:', err);
-            alert('Error closing register. Please run SQL migration if you haven\'t yet.');
-        } finally {
-            setIsClosing(true);
-        }
-    };
 
     const handleEditSale = (sale: RecentSale) => {
         if (sale.is_finalized) {
@@ -336,7 +282,7 @@ export default function Dashboard() {
             customerName: sale.customer_name,
             fulfillmentStatus: sale.fulfillment_status,
             paymentMode: sale.payment_mode,
-            is_os: sale.is_os,
+            isOs: sale.is_os,
             date: sale.date,
             items: [{
                 product_id: sale.products?.id || '',
@@ -371,13 +317,6 @@ export default function Dashboard() {
                         className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-black text-xs hover:bg-emerald-700 transition-all shadow-lg active:scale-95"
                     >
                         <Zap size={18} /> EXPRESS ENTRY
-                    </button>
-                    <button
-                        onClick={handleCloseDay}
-                        disabled={isDayClosed || isClosing}
-                        className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-black text-xs transition-all shadow-lg active:scale-95 ${isDayClosed ? 'bg-muted text-text-muted cursor-not-allowed' : 'bg-brand-red text-white hover:bg-brand-red-dark shadow-red'}`}
-                    >
-                        {isDayClosed ? <><CheckCircle2 size={18} /> REGISTER CLOSED</> : <><Lock size={18} /> {isClosing ? 'CLOSING...' : 'CLOSE REGISTER'}</>}
                     </button>
                     <button onClick={() => setIsReportModalOpen(true)} className="flex items-center gap-2 bg-text-primary text-text-inverse px-5 py-2.5 rounded-2xl font-black text-xs hover:opacity-90 transition-all shadow-lg active:scale-95">
                         <Plus size={18} /> GENERATE REPORT
@@ -525,8 +464,8 @@ export default function Dashboard() {
                                                 backgroundColor: chartColors.tooltip,
                                                 color: chartColors.text
                                             }}
-                                            formatter={(v: any, name: any) => [
-                                                `₱${Number(v).toLocaleString()}`,
+                                            formatter={(v: number | string | undefined, name?: string) => [
+                                                `₱${Number(v || 0).toLocaleString()}`,
                                                 name === 'Revenue' ? '● Revenue' : '● Expense'
                                             ]}
                                             itemStyle={{ fontWeight: 900, fontSize: 12 }}
@@ -559,8 +498,8 @@ export default function Dashboard() {
                                                 backgroundColor: chartColors.tooltip,
                                                 color: chartColors.text
                                             }}
-                                            formatter={(v: any, name: any) => [
-                                                `₱${Number(v).toLocaleString()}`,
+                                            formatter={(v: number | string | undefined, name?: string) => [
+                                                `₱${Number(v || 0).toLocaleString()}`,
                                                 name === 'Revenue' ? '● Revenue' : '● Expense'
                                             ]}
                                             itemStyle={{ fontWeight: 900, fontSize: 12 }}
@@ -599,7 +538,7 @@ export default function Dashboard() {
                                                 <div className="text-right">
                                                     <p className="text-xs font-black text-text-primary font-data">₱{sale.total_price.toLocaleString()}</p>
                                                     {sale.is_finalized ? (
-                                                        <span className="text-[8px] font-black text-text-muted uppercase tracking-widest flex items-center gap-1 justify-end"><Lock size={8} /> LOCKED</span>
+                                                    <span className="text-[8px] font-black text-text-muted uppercase tracking-widest flex items-center gap-1 justify-end">FINALIZED</span>
                                                     ) : (
                                                         <button
                                                             onClick={() => handleEditSale(sale)}
@@ -648,8 +587,7 @@ export default function Dashboard() {
             <ProductModal
                 isOpen={isLowStockModalOpen}
                 onClose={() => { setIsLowStockModalOpen(false); setSelectedLowStockProduct(null); }}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                product={selectedLowStockProduct as any}
+                product={selectedLowStockProduct as unknown as ModalProduct}
                 onSuccess={() => fetchDashboardData()}
                 role={role}
             />
@@ -661,7 +599,7 @@ export default function Dashboard() {
 
             <SalesModal
                 isOpen={isSalesModalOpen}
-                onClose={() => { setIsSalesModalOpen(false); setSelectedSaleForEdit(null); }}
+                onClose={() => { setIsSalesModalOpen(false); setSelectedSaleForEdit(undefined); }}
                 onSuccess={() => fetchDashboardData()}
                 editData={selectedSaleForEdit}
             />

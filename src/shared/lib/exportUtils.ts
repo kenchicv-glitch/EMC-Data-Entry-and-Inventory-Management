@@ -1,5 +1,18 @@
 import ExcelJS from 'exceljs';
 import { format } from 'date-fns';
+import type { Sale } from '../../features/sales/types/sale';
+import type { Product } from '../../features/inventory/types/product';
+
+interface BIRMetrics {
+    vatableSales: number;
+    outputVat: number;
+    exemptSales: number;
+    zeroRatedSales: number;
+    grossSales: number;
+    grossPurchases: number;
+    inputVat: number;
+    vatPayable: number;
+}
 
 /**
  * Standard CSV Export for generic data
@@ -35,7 +48,7 @@ export const exportToCSV = (data: Record<string, unknown>[], filename: string) =
 /**
  * BIR-Compliant Sales Journal / OR Summary Excel Export
  */
-export const exportBIRSalesJournal = async (sales: any[]) => {
+export const exportBIRSalesJournal = async (sales: (Sale & { customers?: { name: string; tin: string }; vat_classification?: string; total_price?: number })[]) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Sales Journal');
 
@@ -99,7 +112,7 @@ export const exportBIRSalesJournal = async (sales: any[]) => {
 /**
  * BIR Summary Worksheet (VAT Compliance Basis)
  */
-export const exportBIRSummaryWorksheet = async (metrics: any) => {
+export const exportBIRSummaryWorksheet = async (metrics: BIRMetrics) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('BIR Summary');
 
@@ -148,7 +161,7 @@ export const exportBIRSummaryWorksheet = async (metrics: any) => {
  * Export Inventory to Excel (Template & Data)
  * Groups products by Master Category (L1) into separate sheets.
  */
-export const exportInventoryToExcel = async (products: any[], branchName: string = 'Current Branch') => {
+export const exportInventoryToExcel = async (products: Product[], branchName: string = 'Current Branch') => {
     const workbook = new ExcelJS.Workbook();
     
     // Group products by L1 (Master Category)

@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { useWorkspace } from '../../shared/lib/WorkspaceContext';
-import type { Workspace } from '../../shared/lib/WorkspaceContext';
+import { useWorkspace } from '../../shared/hooks/useWorkspace';
+import type { Workspace } from '../../shared/lib/WorkspaceContextExports';
 import { useAuth } from '../../shared/hooks/useAuth';
 import {
     LayoutDashboard,
