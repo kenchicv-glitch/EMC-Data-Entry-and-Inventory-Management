@@ -375,12 +375,12 @@ export default function Purchases() {
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="bg-bg-subtle/50 border-b border-border-muted">
-                                        <th className="px-8 py-5 text-[11px] font-black text-text-secondary uppercase tracking-widest pl-16">Created</th>
-                                        <th className="px-8 py-5 text-[11px] font-black text-text-secondary uppercase tracking-widest">Invoice / Supplier</th>
-                                        <th className="px-8 py-5 text-[11px] font-black text-text-secondary uppercase tracking-widest">Status / Payment</th>
-                                        <th className="px-8 py-5 text-[11px] font-black text-text-secondary uppercase tracking-widest">Received Date</th>
-                                        <th className="px-8 py-5 text-[11px] font-black text-text-primary uppercase tracking-widest text-right">Total Amount</th>
-                                        <th className="px-8 py-5 text-[11px] font-black text-text-secondary uppercase tracking-widest w-10"></th>
+                                        <th className="px-8 py-3 text-[11px] font-black text-text-secondary uppercase tracking-widest pl-16">Created</th>
+                                        <th className="px-8 py-3 text-[11px] font-black text-text-secondary uppercase tracking-widest">Invoice / Supplier</th>
+                                        <th className="px-8 py-3 text-[11px] font-black text-text-secondary uppercase tracking-widest">Status / Payment</th>
+                                        <th className="px-8 py-3 text-[11px] font-black text-text-secondary uppercase tracking-widest">Received Date</th>
+                                        <th className="px-8 py-3 text-[11px] font-black text-text-primary uppercase tracking-widest text-right">Total Amount</th>
+                                        <th className="px-8 py-3 text-[11px] font-black text-text-secondary uppercase tracking-widest w-10"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border-muted">
@@ -398,36 +398,36 @@ export default function Purchases() {
                                                         onClick={() => toggleExpand(group.invoice_number)}
                                                         className={`hover:bg-bg-subtle/80 transition-all cursor-pointer group ${expandedInvoices.has(group.invoice_number) ? 'bg-bg-subtle/50' : ''}`}
                                                     >
-                                                        <td className="px-8 py-7">
+                                                        <td className="px-8 py-3">
                                                             <div className="flex items-center gap-3">
                                                                 <div className="w-8 h-8 rounded-lg bg-bg-base flex items-center justify-center text-text-muted group-hover:bg-brand-red/10 group-hover:text-brand-red transition-colors">
                                                                     <Clock size={16} />
                                                                 </div>
                                                                 <div>
-                                                                    <p className="text-[10px] font-black text-text-primary uppercase tracking-wider">{format(creationDate, 'MMM d, yyyy')}</p>
-                                                                    <p className="text-[9px] font-bold text-text-muted uppercase">{format(creationDate, 'p')}</p>
+                                                                    <p className="text-xs font-black text-text-primary uppercase tracking-wider">{format(creationDate, 'MMM d, yyyy')}</p>
+                                                                    <p className="text-[10px] font-bold text-text-muted uppercase">{format(creationDate, 'p')}</p>
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td className="px-8 py-7">
+                                                        <td className="px-8 py-3">
                                                             <div className="flex items-center gap-4">
                                                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${group.status === 'received' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'}`}>
                                                                     {group.status === 'received' ? <CheckCircle2 size={18} /> : <Clock size={18} />}
                                                                 </div>
                                                                 <div>
                                                                     <div className="flex items-center gap-2">
-                                                                        <p className="text-sm font-black text-text-primary uppercase font-data">{group.invoice_number || 'N/A'}</p>{group.transaction_label && (<span className="px-1.5 py-0.5 bg-brand-charcoal text-white text-[8px] font-black rounded uppercase tracking-tighter shadow-sm flex items-center gap-0.5 shrink-0"><Tag size={8} /> {group.transaction_label}</span>)}
+                                                                        <p className="text-base font-black text-text-primary uppercase font-data">{group.invoice_number || 'N/A'}</p>{group.transaction_label && (<span className="px-1.5 py-0.5 bg-brand-charcoal text-white text-[8px] font-black rounded uppercase tracking-tighter shadow-sm flex items-center gap-0.5 shrink-0"><Tag size={8} /> {group.transaction_label}</span>)}
                                                                         {returnedInvoices.has(group.invoice_number) && (
                                                                             <span className="px-1.5 py-0.5 bg-brand-red/10 text-brand-red text-[8px] font-black rounded uppercase tracking-tighter border border-brand-red/20 shadow-sm flex items-center gap-0.5 shrink-0">
                                                                                 <RotateCcw size={8} /> RETURNED
                                                                             </span>
                                                                         )}
                                                                     </div>
-                                                                    <p className="text-[10px] font-bold text-text-muted uppercase">{group.supplier}</p>
+                                                                    <p className="text-xs font-bold text-text-muted uppercase">{group.supplier}</p>
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td className="px-8 py-7">
+                                                        <td className="px-8 py-3">
                                                             <div className="flex flex-col gap-1">
                                                                 {group.status === 'pending' ? (
                                                                     <button
@@ -463,18 +463,18 @@ export default function Purchases() {
                                                                 )}
                                                             </div>
                                                         </td>
-                                                        <td className="px-8 py-7">
+                                                        <td className="px-8 py-3">
                                                             {receiptDate ? (
                                                                 <div className="flex flex-col">
-                                                                    <p className="text-[10px] font-black text-text-primary uppercase tracking-wider">{format(receiptDate, 'MMM d, yyyy')}</p>
-                                                                    <p className="text-[9px] font-bold text-text-muted uppercase">{format(receiptDate, 'p')}</p>
+                                                                    <p className="text-xs font-black text-text-primary uppercase tracking-wider">{format(receiptDate, 'MMM d, yyyy')}</p>
+                                                                    <p className="text-[10px] font-bold text-text-muted uppercase">{format(receiptDate, 'p')}</p>
                                                                 </div>
                                                             ) : (
                                                                 <span className="text-[10px] font-bold text-text-muted opacity-50 uppercase">Pending</span>
                                                             )}
                                                         </td>
-                                                        <td className="px-8 py-7 text-right font-data font-black text-text-primary">₱{group.grand_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                                        <td className="px-8 py-7 text-right flex items-center justify-end gap-2">
+                                                        <td className="px-8 py-3 text-right font-data font-black text-text-primary text-lg">₱{group.grand_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                        <td className="px-8 py-3 text-right flex items-center justify-end gap-2">
                                                             {role === 'owner' && (
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); if (confirm('Are you sure you want to delete this purchase?')) handleDeleteInvoice(group.invoice_number); }}

@@ -596,7 +596,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 px-4">
             <div className="w-full max-w-6xl rounded-3xl bg-surface shadow-2xl border border-border-default overflow-hidden flex flex-col max-h-[95vh] animate-slide-up text-left">
-                <div className="flex items-center justify-between px-10 py-8 bg-brand-charcoal">
+                <div className="flex items-center justify-between px-10 py-4 bg-brand-charcoal">
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-brand-red rounded-lg flex items-center justify-center text-white shadow-brand-red/20 shadow-lg"><Truck size={16} /></div>
                         <h2 className="text-base font-black text-white uppercase tracking-widest">{editData ? 'Edit Purchase' : 'Create Purchase'}</h2>
@@ -604,9 +604,9 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                     <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors"><X size={18} /></button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-10 py-12 scrollbar-hide overflow-x-visible bg-surface">
+                <div className="flex-1 overflow-y-auto px-10 py-6 scrollbar-hide overflow-x-visible bg-surface">
                     {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl flex items-center gap-2"><AlertCircle size={16} /> {error}</div>}
-                    <form id="purchase-form" onSubmit={handleSubmit} className="space-y-10 pb-24">
+                    <form id="purchase-form" onSubmit={handleSubmit} className="space-y-6 pb-12">
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                             <div className="md:col-span-3 p-2 bg-subtle rounded-xl border border-border-default flex flex-col gap-2 h-[68px]">
                                 <div className="flex items-center justify-between p-1 bg-surface border border-border-default rounded-lg">
@@ -1055,7 +1055,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                     </form>
                 </div>
 
-                <div className="px-10 py-8 bg-brand-charcoal flex flex-col md:flex-row items-end md:items-center justify-between gap-6 relative overflow-hidden">
+                <div className="px-10 py-4 bg-brand-charcoal flex flex-col md:flex-row items-end md:items-center justify-between gap-6 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-brand-red/10 rounded-full blur-3xl -mr-32 -mt-32" />
                     <div className="flex flex-wrap items-center gap-x-10 gap-y-4 text-white/60 relative z-10 w-full md:w-auto">
                         <div className="min-w-[120px]"><p className="text-[10px] font-black uppercase opacity-50 tracking-widest mb-1.5">Subtotal</p><p className="text-base lg:text-lg font-black font-data text-white whitespace-nowrap">₱{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
