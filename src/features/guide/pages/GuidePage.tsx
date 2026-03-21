@@ -1,5 +1,4 @@
-import React from 'react';
-import { BookOpen, ShoppingCart, Package, Keyboard, MousePointer2, AlertCircle, CheckCircle2, Info, Receipt, Truck } from 'lucide-react';
+import { ShoppingCart, Package, Keyboard, MousePointer2, CheckCircle2 } from 'lucide-react';
 
 const GuidePage = () => {
     return (
