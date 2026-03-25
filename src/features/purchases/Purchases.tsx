@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
 import { supabase } from '../../shared/lib/supabase';
 import {
-    Search, ChevronDown, ShoppingBag, Package, Download, Filter, CheckCircle2, Clock, Trash2, RotateCcw, Tag
+    Search, ChevronDown, ShoppingBag, Package, Download, CheckCircle2, Clock, Trash2, RotateCcw, Tag, SlidersHorizontal
 } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import Calendar from '../../features/reports/components/Calendar';
@@ -241,19 +241,30 @@ export default function Purchases() {
                 <div className="relative">
                     <button
                         onClick={() => setIsFilterOpen(!isFilterOpen)}
-                        className={`px-5 py-3 bg-bg-surface border border-border-default rounded-2xl text-text-primary hover:bg-bg-subtle transition-all shadow-sm flex items-center gap-2 font-bold text-sm ${isFilterOpen ? 'border-brand-red text-brand-red' : ''}`}
+                        className={`p-2 rounded-xl transition-all flex items-center gap-2 border ${statusFilters.length + paymentFilters.length + typeFilters.length > 0 ? 'bg-brand-red text-white shadow-red border-brand-red' : 'bg-bg-surface border-border-default text-text-secondary hover:bg-bg-subtle'}`}
+                        title="Advanced Filters"
                     >
-                        <Filter size={18} /> Filters {(statusFilters.length + paymentFilters.length + typeFilters.length) > 0 && <span className="w-5 h-5 bg-brand-red text-white rounded-full flex items-center justify-center text-[10px]">{statusFilters.length + paymentFilters.length + typeFilters.length}</span>}
+                        <SlidersHorizontal size={16} />
+                        {statusFilters.length + paymentFilters.length + typeFilters.length > 0 ? (
+                            <span className="text-[10px] font-black pr-1">{statusFilters.length + paymentFilters.length + typeFilters.length}</span>
+                        ) : (
+                            <span className="text-[10px] font-black pr-1 tracking-widest uppercase">FILTERS</span>
+                        )}
                     </button>
 
                     {isFilterOpen && (
-                        <div className="absolute right-0 top-full mt-2 w-64 bg-bg-surface rounded-2xl shadow-xl border border-border-muted p-4 z-[100] animate-slide-up">
-                            <div className="space-y-4">
+                        <div className="absolute right-0 top-full mt-3 w-72 bg-bg-surface border border-border-default rounded-3xl shadow-xl p-5 z-[100] animate-in fade-in zoom-in duration-200">
+                            <div className="flex items-center justify-between mb-4 border-b border-border-default pb-3">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-text-primary">Advanced Filters</h4>
+                                <button onClick={() => { setStatusFilters([]); setPaymentFilters([]); setTypeFilters([]); }} className="text-[9px] font-black uppercase text-brand-red hover:underline decoration-2 underline-offset-4">CLEAR ALL</button>
+                            </div>
+
+                            <div className="space-y-5">
                                 <div>
-                                    <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2">Order Status</h4>
-                                    <div className="space-y-2">
+                                    <h4 className="text-[8px] font-black text-text-muted uppercase tracking-widest mb-2">Order Status</h4>
+                                    <div className="flex flex-col gap-2">
                                         {['pending', 'received', 'returned'].map(s => (
-                                            <label key={s} className="flex items-center gap-2 cursor-pointer group">
+                                            <label key={s} className="flex items-center gap-3 cursor-pointer group">
                                                 <input
                                                     type="checkbox"
                                                     checked={statusFilters.includes(s)}
@@ -261,18 +272,22 @@ export default function Purchases() {
                                                         if (e.target.checked) setStatusFilters([...statusFilters, s]);
                                                         else setStatusFilters(statusFilters.filter(f => f !== s));
                                                     }}
-                                                    className="w-4 h-4 rounded border-border-default text-brand-red focus:ring-brand-red cursor-pointer bg-bg-base"
+                                                    className="hidden"
                                                 />
-                                                <span className="text-xs font-bold text-text-secondary capitalize group-hover:text-brand-red transition-colors">{s}</span>
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${statusFilters.includes(s) ? 'bg-brand-red border-brand-red' : 'bg-white border-border-default'}`}>
+                                                    {statusFilters.includes(s) && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                                                </div>
+                                                <span className="text-xs font-bold text-text-secondary capitalize group-hover:text-text-primary">{s}</span>
                                             </label>
                                         ))}
                                     </div>
                                 </div>
-                                <div className="pt-4 border-t border-border-muted">
-                                    <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2">Payment Status</h4>
-                                    <div className="space-y-2">
+
+                                <div>
+                                    <h4 className="text-[8px] font-black text-text-muted uppercase tracking-widest mb-2">Payment Status</h4>
+                                    <div className="flex flex-col gap-2">
                                         {['unpaid', 'partial', 'paid'].map(s => (
-                                            <label key={s} className="flex items-center gap-2 cursor-pointer group">
+                                            <label key={s} className="flex items-center gap-3 cursor-pointer group">
                                                 <input
                                                     type="checkbox"
                                                     checked={paymentFilters.includes(s)}
@@ -280,42 +295,40 @@ export default function Purchases() {
                                                         if (e.target.checked) setPaymentFilters([...paymentFilters, s]);
                                                         else setPaymentFilters(paymentFilters.filter(f => f !== s));
                                                     }}
-                                                    className="w-4 h-4 rounded border-border-default text-brand-red focus:ring-brand-red cursor-pointer bg-bg-base"
+                                                    className="hidden"
                                                 />
-                                                <span className="text-xs font-bold text-text-secondary capitalize group-hover:text-brand-red transition-colors">{s === 'paid' ? 'Full' : s}</span>
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${paymentFilters.includes(s) ? 'bg-brand-red border-brand-red' : 'bg-white border-border-default'}`}>
+                                                    {paymentFilters.includes(s) && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                                                </div>
+                                                <span className="text-xs font-bold text-text-secondary capitalize group-hover:text-text-primary">{s === 'paid' ? 'Full' : s}</span>
                                             </label>
                                         ))}
                                     </div>
                                 </div>
-                                <div className="pt-4 border-t border-border-muted">
-                                    <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2">Purchase Type</h4>
-                                    <div className="space-y-2">
+
+                                <div>
+                                    <h4 className="text-[8px] font-black text-text-muted uppercase tracking-widest mb-2">Purchase Type</h4>
+                                    <div className="grid grid-cols-2 gap-2">
                                         {[
                                             { id: 'supplier', label: 'Supplier' },
                                             { id: 'transfer', label: 'Transfer' }
                                         ].map(t => (
-                                            <label key={t.id} className="flex items-center gap-2 cursor-pointer group">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={typeFilters.includes(t.id)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) setTypeFilters([...typeFilters, t.id]);
-                                                        else setTypeFilters(typeFilters.filter(f => f !== t.id));
-                                                    }}
-                                                    className="w-4 h-4 rounded border-border-default text-brand-red focus:ring-brand-red cursor-pointer bg-bg-base"
-                                                />
-                                                <span className="text-xs font-bold text-text-secondary capitalize group-hover:text-brand-red transition-colors">{t.label}</span>
-                                            </label>
+                                            <button 
+                                                key={t.id}
+                                                onClick={() => {
+                                                    if (typeFilters.includes(t.id)) setTypeFilters(typeFilters.filter(f => f !== t.id));
+                                                    else setTypeFilters([...typeFilters, t.id]);
+                                                }}
+                                                className={`px-2 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${typeFilters.includes(t.id) ? 'bg-text-primary border-text-primary text-white' : 'bg-white border-border-default text-text-muted hover:bg-bg-subtle'}`}
+                                            >
+                                                {t.label}
+                                            </button>
                                         ))}
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => { setStatusFilters([]); setPaymentFilters([]); setTypeFilters([]); }}
-                                    className="w-full py-2 text-[10px] font-black text-text-muted hover:text-brand-red uppercase tracking-widest text-center transition-colors"
-                                >
-                                    Reset Filters
-                                </button>
                             </div>
+                            
+                            <button onClick={() => setIsFilterOpen(false)} className="w-full mt-6 bg-brand-red text-white py-3 rounded-2xl font-black text-[10px] uppercase shadow-red active:scale-95 transition-all">Apply Filters</button>
                         </div>
                     )}
                 </div>

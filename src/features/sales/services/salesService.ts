@@ -5,7 +5,7 @@ export const salesService = {
     async getAll(branchId?: string | null, startDate?: string): Promise<Sale[]> {
         let query = supabase
             .from('sales')
-            .select('id, product_id, quantity, unit_price, total_price, vat_amount, discount_amount, is_discounted, cost_price, delivery_fee, date, invoice_number, user_id, customer_name, customer_id, fulfillment_status, payment_mode, is_os, edited_at, products(name, brand)')
+            .select('id, product_id, quantity, unit_price, total_price, vat_amount, discount_amount, is_discounted, cost_price, delivery_fee, date, invoice_number, user_id, customer_name, customer_id, fulfillment_status, payment_mode, is_os, edited_at, invoice_type, or_number, products(name, brand)')
             .order('date', { ascending: false });
 
         if (branchId) {

@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useMemo, Fragment } from 'react';
 import {
-    Search, ChevronDown, Receipt, ShoppingBag, Download, Filter, Trash2, User, Truck, Clock, CheckCircle2, PackageSearch, RotateCcw, Grid, Tag
+    Search, ChevronDown, Receipt, ShoppingBag, Download, Trash2, User, Truck, Clock, CheckCircle2, PackageSearch, RotateCcw, Grid, Tag, SlidersHorizontal
 } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatCurrency, formatDate } from '../../shared/lib/formatUtils';
@@ -21,8 +21,14 @@ export default function Sales() {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
-    const [filterType, setFilterType] = useState<'all' | 'standard' | 'os' | 'discounted' | 'refunded'>('all');
+    const [activeFilters, setActiveFilters] = useState<Record<string, boolean>>({
+        pay_cash: false, pay_gcash: false, pay_cheque: false, pay_bank_transfer: false, pay_others: false,
+        type_a: false, type_b: false, type_os: false,
+        only_discounted: false, only_refunded: false,
+    });
     const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+    const activeFilterCount = Object.values(activeFilters).filter(Boolean).length;
 
     const refundedInvoices = useMemo(() => 
         new Set(refunds.map(r => r.invoice_number).filter(Boolean)),
@@ -95,14 +101,36 @@ export default function Sales() {
                 (item.products?.name?.toLowerCase().includes(search) ?? false)
             )
         );
-        return matchesSearch && isSameDay(new Date(group.date), selectedDate) && (
-            filterType === 'all' ||
-            (filterType === 'standard' && !group.is_os) ||
-            (filterType === 'os' && group.is_os) ||
-            (filterType === 'discounted' && group.total_discount > 0) ||
-            (filterType === 'refunded' && refundedInvoices.has(group.invoice_number))
-        );
-    }), [groupedSales, searchTerm, selectedDate, filterType, refundedInvoices]);
+
+        const anyPaymentChecked = activeFilters.pay_cash || activeFilters.pay_gcash || activeFilters.pay_cheque || activeFilters.pay_bank_transfer || activeFilters.pay_others;
+        
+        const paymentType = group.payment_mode?.toLowerCase() || 'cash';
+        let payMatch = anyPaymentChecked ? false : true;
+        
+        if (anyPaymentChecked) {
+            if (paymentType === 'cash' && activeFilters.pay_cash) payMatch = true;
+            if (paymentType === 'gcash' && activeFilters.pay_gcash) payMatch = true;
+            if (paymentType === 'cheque' && activeFilters.pay_cheque) payMatch = true;
+            if (paymentType === 'bank_transfer' && activeFilters.pay_bank_transfer) payMatch = true;
+            if (paymentType === 'others' && activeFilters.pay_others) payMatch = true;
+            if (!['cash', 'gcash', 'cheque', 'bank_transfer', 'others'].includes(paymentType) && activeFilters.pay_others) payMatch = true;
+        }
+
+        const anyTypeChecked = activeFilters.type_a || activeFilters.type_b || activeFilters.type_os;
+        
+        let invTypeMatch = anyTypeChecked ? false : true;
+        if (anyTypeChecked) {
+            if (group.is_os && activeFilters.type_os) invTypeMatch = true;
+            if (!group.is_os && group.invoice_type === 'A' && activeFilters.type_a) invTypeMatch = true;
+            if (!group.is_os && group.invoice_type === 'B' && activeFilters.type_b) invTypeMatch = true;
+        }
+
+        const otherMatch = 
+            (!activeFilters.only_discounted || group.total_discount > 0) &&
+            (!activeFilters.only_refunded || refundedInvoices.has(group.invoice_number));
+
+        return matchesSearch && isSameDay(new Date(group.date), selectedDate) && payMatch && invTypeMatch && otherMatch;
+    }), [groupedSales, searchTerm, selectedDate, activeFilters, refundedInvoices]);
 
     const activeDates = Array.from(new Set(groupedSales.map(s => formatDate(s.date, 'yyyy-MM-dd'))));
 
@@ -174,7 +202,7 @@ export default function Sales() {
                         onClick={() => navigate('/express-sales')}
                         className="flex items-center gap-2 bg-surface border border-border-default text-text-secondary px-5 py-3 rounded-2xl font-bold text-sm hover:bg-subtle transition-all shadow-sm"
                     >
-                        <Grid size={18} /> EXPRESS ENCODING
+                        <Grid size={18} /> OS ENCODING
                     </button>
                     <button className="flex items-center gap-2 bg-surface border border-border-default text-text-secondary px-5 py-3 rounded-2xl font-bold text-sm hover:bg-subtle transition-all shadow-sm"><Download size={18} /> Export</button>
                     <button onClick={() => openSalesModal()} className="flex items-center gap-2 bg-brand-red text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-brand-red-dark transition-all shadow-red active:scale-95"><ShoppingBag size={18} /> CREATE SALE</button>
@@ -189,27 +217,88 @@ export default function Sales() {
                 <div className="relative">
                     <button
                         onClick={() => setIsFilterOpen(!isFilterOpen)}
-                        className={`px-5 py-3 border rounded-2xl transition-all shadow-sm flex items-center gap-2 font-bold text-sm ${filterType !== 'all' ? 'bg-brand-red text-white border-brand-red' : 'bg-surface border-border-default text-text-secondary hover:bg-subtle'}`}
+                        className={`p-2 rounded-xl transition-all flex items-center gap-2 border ${activeFilterCount > 0 ? 'bg-brand-red text-white shadow-red border-brand-red' : 'bg-surface border-border-default text-text-secondary hover:bg-subtle'}`}
+                        title="Advanced Filters"
                     >
-                        <Filter size={18} /> {filterType === 'all' ? 'Filters' : filterType.toUpperCase()}
+                        <SlidersHorizontal size={16} />
+                        {activeFilterCount > 0 ? (
+                            <span className="text-[10px] font-black pr-1">{activeFilterCount}</span>
+                        ) : (
+                            <span className="text-[10px] font-black pr-1 tracking-widest uppercase">FILTERS</span>
+                        )}
                     </button>
                     {isFilterOpen && (
-                        <div className="absolute right-0 mt-2 w-48 bg-surface border border-border-default rounded-2xl shadow-xl z-50 overflow-hidden animate-slide-up">
-                            {[
-                                { id: 'all', label: 'All Invoices' },
-                                { id: 'standard', label: 'Regular Invoices' },
-                                { id: 'os', label: 'OS Invoices' },
-                                { id: 'discounted', label: 'Discounted Sales' },
-                                { id: 'refunded', label: 'Refunded' }
-                            ].map(option => (
-                                <button
-                                    key={option.id}
-                                    onClick={() => { setFilterType(option.id as 'all' | 'standard' | 'os' | 'discounted' | 'refunded'); setIsFilterOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors ${filterType === option.id ? 'bg-brand-red text-white' : 'text-text-secondary hover:bg-subtle'}`}
-                                >
-                                    {option.label}
-                                </button>
-                            ))}
+                        <div className="absolute right-0 top-full mt-3 w-72 bg-surface border border-border-default rounded-3xl shadow-xl z-50 p-5 animate-in fade-in zoom-in duration-200">
+                            <div className="flex items-center justify-between mb-4 border-b border-border-default pb-3">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-text-primary">Advanced Filters</h4>
+                                <button onClick={() => setActiveFilters({
+                                    pay_cash: false, pay_gcash: false, pay_cheque: false, pay_bank_transfer: false, pay_others: false,
+                                    type_a: false, type_b: false, type_os: false,
+                                    only_discounted: false, only_refunded: false,
+                                })} className="text-[9px] font-black uppercase text-brand-red hover:underline decoration-2 underline-offset-4">CLEAR ALL</button>
+                            </div>
+
+                            <div className="space-y-5">
+                                <div className="space-y-2">
+                                    <p className="text-[8px] font-black text-text-muted uppercase tracking-widest">Other Options</p>
+                                    <div className="flex flex-col gap-2">
+                                        {[
+                                            { id: 'only_discounted', label: 'Discounted Only' },
+                                            { id: 'only_refunded', label: 'Refunded Only' },
+                                        ].map(opt => (
+                                            <label key={opt.id} className="flex items-center gap-3 cursor-pointer group">
+                                                <input type="checkbox" className="hidden" checked={activeFilters[opt.id]} onChange={() => setActiveFilters(p => ({ ...p, [opt.id]: !p[opt.id] }))} />
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${activeFilters[opt.id] ? 'bg-brand-red border-brand-red' : 'bg-white border-border-default'}`}>
+                                                    {activeFilters[opt.id] && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                                                </div>
+                                                <span className="text-xs font-bold text-text-secondary group-hover:text-text-primary">{opt.label}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <p className="text-[8px] font-black text-text-muted uppercase tracking-widest">Invoice Type</p>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            { id: 'type_a', label: 'TYPE A' },
+                                            { id: 'type_b', label: 'TYPE B' },
+                                            { id: 'type_os', label: 'OS' },
+                                        ].map(opt => (
+                                            <button 
+                                                key={opt.id}
+                                                onClick={() => setActiveFilters(p => ({ ...p, [opt.id]: !p[opt.id] }))}
+                                                className={`px-2 py-2 rounded-xl text-[10px] font-black uppercase transition-all border ${activeFilters[opt.id] ? 'bg-text-primary border-text-primary text-white' : 'bg-white border-border-default text-text-muted hover:bg-subtle'}`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <p className="text-[8px] font-black text-text-muted uppercase tracking-widest">Mode of Payment</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {[
+                                            { id: 'pay_cash', label: 'Cash' },
+                                            { id: 'pay_gcash', label: 'GCash' },
+                                            { id: 'pay_cheque', label: 'Cheque' },
+                                            { id: 'pay_bank_transfer', label: 'Transfer' },
+                                            { id: 'pay_others', label: 'Others' },
+                                        ].map(opt => (
+                                            <button 
+                                                key={opt.id}
+                                                onClick={() => setActiveFilters(p => ({ ...p, [opt.id]: !p[opt.id] }))}
+                                                className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase border transition-all ${activeFilters[opt.id] ? 'bg-brand-red border-brand-red text-white' : 'bg-white border-border-default text-text-muted hover:bg-subtle'}`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button onClick={() => setIsFilterOpen(false)} className="w-full mt-6 bg-brand-red text-white py-3 rounded-2xl font-black text-[10px] uppercase shadow-red active:scale-95 transition-all">Apply Filters</button>
                         </div>
                     )}
                 </div>

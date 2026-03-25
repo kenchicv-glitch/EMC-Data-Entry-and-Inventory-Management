@@ -106,6 +106,15 @@ export default function ExpressSales() {
     const handleAddRow = () => {
         const lastRow = rows[rows.length - 1];
         const newRow = createEmptyRow();
+        newRow.invoice_number = lastRow.invoice_number;
+        newRow.isOs = lastRow.isOs;
+        newRow.invoice_type = lastRow.invoice_type;
+        setRows([...rows, newRow]);
+    };
+
+    const handleNextInvoice = () => {
+        const lastRow = rows[rows.length - 1];
+        const newRow = createEmptyRow();
         newRow.invoice_number = incrementInvoice(lastRow.invoice_number);
         newRow.isOs = lastRow.isOs;
         newRow.invoice_type = lastRow.invoice_type;
@@ -256,9 +265,9 @@ export default function ExpressSales() {
                     </button>
                     <div>
                         <h1 className="text-2xl font-black text-brand-charcoal tracking-tight flex items-center gap-2">
-                            <ShoppingCart className="text-brand-red" size={24} /> Express Sales Entry
+                            <ShoppingCart className="text-brand-red" size={24} /> OS Encoding
                         </h1>
-                        <p className="text-xs text-slate-500 font-medium">Bulk encode multiple receipts in a single view</p>
+                        <p className="text-xs text-slate-500 font-medium">Bulk encode multiple items to one or more OS invoices</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -278,10 +287,10 @@ export default function ExpressSales() {
                 </div>
             </div>
 
-            <div className="bg-white rounded-[32px] border border-slate-100 shadow-xl overflow-hidden min-h-[500px]">
+            <div className="bg-white rounded-[32px] border border-slate-100 shadow-xl min-h-[500px]">
                 <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="bg-slate-50 border-b border-slate-100">
+                        <tr className="bg-slate-50 border-b border-slate-100 [&>th:first-child]:rounded-tl-[32px] [&>th:last-child]:rounded-tr-[32px]">
                             <th className="px-6 py-4 text-[10px] font-black text-brand-charcoal uppercase tracking-widest w-48 text-center">Invoice #</th>
                             <th className="px-6 py-4 text-[10px] font-black text-brand-charcoal uppercase tracking-widest">Product Search</th>
                             <th className="px-6 py-4 text-[10px] font-black text-brand-charcoal uppercase tracking-widest w-32 text-center">Qty</th>
@@ -291,10 +300,12 @@ export default function ExpressSales() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                        {rows.map((row, index) => (
+                        {rows.map((row, index) => {
+                            const isSameAsPrevious = index > 0 && row.invoice_number === rows[index - 1].invoice_number;
+                            return (
                             <tr key={row.id} className="hover:bg-slate-50/50 transition-colors group">
                                 <td className="px-6 py-3">
-                                    <div className="flex flex-col gap-1.5 items-center">
+                                    <div className={`flex flex-col gap-1.5 items-center transition-opacity ${isSameAsPrevious ? 'opacity-0 pointer-events-none' : ''}`}>
                                         <div className="flex items-center gap-1.5">
                                             <input
                                                 type="text"
@@ -317,26 +328,17 @@ export default function ExpressSales() {
                                                 OS
                                             </button>
                                         </div>
-                                        <div className="flex bg-slate-100 border border-slate-200 rounded-md p-0.5 scale-90">
-                                            <button
-                                                type="button"
-                                                onClick={() => updateRow(index, { invoice_type: 'A' })}
-                                                className={`px-2 py-0.5 rounded text-[8px] font-black transition-all ${row.invoice_type === 'A' ? 'bg-white text-brand-charcoal shadow-sm' : 'text-slate-400'}`}
-                                            >
-                                                A
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => updateRow(index, { invoice_type: 'B' })}
-                                                className={`px-2 py-0.5 rounded text-[8px] font-black transition-all ${row.invoice_type === 'B' ? 'bg-white text-brand-charcoal shadow-sm' : 'text-slate-400'}`}
-                                            >
-                                                B
-                                            </button>
-                                        </div>
                                     </div>
                                 </td>
                                 <td className="px-6 py-3 relative">
-                                    <div className="relative">
+                                    <div 
+                                        className="relative"
+                                        onBlur={(e) => {
+                                            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                                updateRow(index, { isSearchOpen: false });
+                                            }
+                                        }}
+                                    >
                                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
                                         <input
                                             type="text"
@@ -380,13 +382,33 @@ export default function ExpressSales() {
                                             }}
                                         />
                                         {row.isSearchOpen && (
-                                            <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-2xl overflow-hidden max-h-60 overflow-y-auto">
+                                            <div tabIndex={-1} className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-2xl overflow-hidden max-h-60 overflow-y-auto">
                                                 {products.filter(p => isSmartMatch(p.name, row.searchQuery)).slice(0, 10).map((p, pIdx) => (
                                                     <div
                                                         key={p.id}
-                                                        className={`px-4 py-2 text-[11px] cursor-pointer flex justify-between items-center ${row.highlightedIndex === pIdx ? 'bg-brand-red/5 text-brand-red' : 'hover:bg-slate-50'}`}
+                                                        tabIndex={0}
+                                                        className={`px-4 py-2 text-[11px] cursor-pointer flex justify-between items-center outline-none focus:bg-brand-red/10 focus:ring-1 focus:ring-brand-red focus:text-brand-red transition-all ${row.highlightedIndex === pIdx ? 'bg-brand-red/5 text-brand-red' : 'hover:bg-slate-50'}`}
                                                         onClick={() => selectProduct(index, p)}
                                                         onMouseEnter={() => updateRow(index, { highlightedIndex: pIdx })}
+                                                        onFocus={() => updateRow(index, { highlightedIndex: pIdx })}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                selectProduct(index, p);
+                                                            } else if (e.key === 'ArrowDown') {
+                                                                e.preventDefault();
+                                                                const next = e.currentTarget.nextElementSibling as HTMLElement;
+                                                                if (next) next.focus();
+                                                            } else if (e.key === 'ArrowUp') {
+                                                                e.preventDefault();
+                                                                const prev = e.currentTarget.previousElementSibling as HTMLElement;
+                                                                if (prev) {
+                                                                    prev.focus();
+                                                                } else {
+                                                                    searchInputRefs.current[index]?.focus();
+                                                                }
+                                                            }
+                                                        }}
                                                     >
                                                         <span className="font-bold">{p.name} {p.brand ? `[${p.brand}]` : ''}</span>
                                                         <div className="flex gap-4">
@@ -410,11 +432,20 @@ export default function ExpressSales() {
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter') {
                                                 e.preventDefault();
-                                                if (index === rows.length - 1) {
-                                                    handleAddRow();
-                                                    setTimeout(() => searchInputRefs.current[index + 1]?.focus(), 50);
+                                                if (e.ctrlKey || e.metaKey) {
+                                                    if (index === rows.length - 1) {
+                                                        handleNextInvoice();
+                                                        setTimeout(() => searchInputRefs.current[index + 1]?.focus(), 50);
+                                                    } else {
+                                                        searchInputRefs.current[index + 1]?.focus();
+                                                    }
                                                 } else {
-                                                    searchInputRefs.current[index + 1]?.focus();
+                                                    if (index === rows.length - 1) {
+                                                        handleAddRow();
+                                                        setTimeout(() => searchInputRefs.current[index + 1]?.focus(), 50);
+                                                    } else {
+                                                        searchInputRefs.current[index + 1]?.focus();
+                                                    }
                                                 }
                                             } else if (e.key === 'Escape') {
                                                 searchInputRefs.current[index]?.focus();
@@ -435,13 +466,19 @@ export default function ExpressSales() {
                                     </button>
                                 </td>
                             </tr>
-                        ))}
+                            );
+                        })}
                     </tbody>
                 </table>
                 <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
-                    <button onClick={handleAddRow} className="flex items-center gap-2 text-xs font-black text-brand-red hover:text-brand-red-dark uppercase tracking-widest transition-all">
-                        <Plus size={16} /> Add Receipt Line
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <button onClick={handleAddRow} className="flex items-center gap-2 text-xs font-black text-brand-red hover:text-brand-red-dark uppercase tracking-widest transition-all">
+                            <Plus size={16} /> Add Item Line
+                        </button>
+                        <button onClick={handleNextInvoice} className="flex items-center gap-2 text-xs font-black text-slate-400 hover:text-brand-charcoal uppercase tracking-widest transition-all">
+                            <Plus size={16} /> Next OS Invoice
+                        </button>
+                    </div>
                     <div className="text-right">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grand Total ({rows.filter(r => r.product_id).length} Entries)</p>
                         <p className="text-3xl font-black text-brand-charcoal font-data tracking-tight">₱{rows.reduce((sum, r) => sum + r.total_price, 0).toLocaleString()}</p>

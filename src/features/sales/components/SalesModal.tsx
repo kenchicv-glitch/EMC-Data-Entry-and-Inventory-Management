@@ -231,9 +231,14 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             if (!osMode) {
                 // Only filter by type for standard invoices
                 query = query.eq('invoice_type', invoiceType);
+            } else {
+                // OS invoices ALWAYS reset to 000001 daily
+                query = query.eq('is_os', true).gte('date', today);
             }
 
-            const { data, error } = await query.order('date', { ascending: false }).limit(20);
+            const { data, error } = await query
+                .order('invoice_number', { ascending: false })
+                .limit(1);
 
             if (error) throw error;
 
@@ -421,7 +426,6 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                     throw new Error(`Duplicate OR Number detected: ${sanitizedOrNumber}. Please check or enter a new one.`);
                 }
             }
-            if (!sanitizedOrNumber) throw new Error('OR Number is required for BIR compliance');
             if (items.some(item => !item.product_id)) throw new Error('Please select a product for all rows');
             if (items.some(item => item.quantity <= 0)) throw new Error('Quantity must be greater than 0');
 
@@ -478,7 +482,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                     invoice_number: invoiceNumber,
                     customer_name: currentCustomerName,
                     customer_id: currentCustomerId,
-                    fulfillment_status: fulfillmentStatus,
+                    fulfillment_status: 'pickup', // Default to pickup as selection is removed
                     payment_mode: paymentMode,
                     user_id: user?.id,
                     vat_amount: finalVatAmount * itemRatio,
@@ -778,7 +782,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
 
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 px-4 text-left">
-            <div className="w-full max-w-5xl rounded-2xl bg-surface shadow-2xl border border-border-default overflow-hidden flex flex-col max-h-[95vh] animate-slide-up">
+            <div className="w-full max-w-6xl rounded-2xl bg-surface shadow-2xl border border-border-default overflow-hidden flex flex-col max-h-[95vh] animate-slide-up">
                 <div className="flex items-center justify-between px-6 py-3 bg-brand-charcoal">
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-brand-red rounded-lg flex items-center justify-center text-white"><ShoppingCart size={16} /></div>
@@ -792,39 +796,37 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                     {error && <div className="mb-4 p-3 bg-danger-subtle border border-danger text-danger text-sm rounded-xl flex items-center gap-2"><AlertCircle size={16} /> {error}</div>}
                     <form id="order-form" onSubmit={validateAndSubmit} className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
-                            <div className="lg:col-span-4 p-3 bg-brand-charcoal rounded-2xl border border-border-strong px-4 flex items-center justify-between shadow-soft h-[68px]">
+                             <div className="lg:col-span-4 p-3 bg-brand-charcoal rounded-2xl border border-border-strong px-5 flex items-center justify-between shadow-soft min-h-[65px]">
                                 <div className="flex flex-col">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 flex items-center gap-2"><Receipt size={12} /> Invoice</label>
                                     <div className="flex items-center gap-4">
-                                        <div className="relative group">
-                                            <input
-                                                type="text"
-                                                className="w-28 bg-transparent text-white text-lg font-data font-black outline-none border-b-2 border-slate-700 focus:border-brand-red transition-all text-center tracking-widest h-[24px]"
-                                                value={rawInvoiceNum}
-                                                onChange={(e) => handleInvoiceChange(e.target.value)}
-                                                onBlur={handleInvoiceBlur}
-                                                onFocus={(e) => e.target.select()}
-                                                placeholder={isOs ? 'OS-000001' : '000001'}
-                                            />
-                                            <div className="absolute right-[-48px] top-1/2 -translate-y-1/2 flex items-center gap-1.5 origin-left">
-                                                <div className="flex bg-white/10 border border-white/10 rounded-lg p-1 shadow-md">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setInvoiceType('A')}
-                                                        className={`px-2 py-1 rounded-md text-[10px] font-black transition-all ${invoiceType === 'A' ? 'bg-white text-brand-charcoal shadow-sm' : 'text-slate-400 hover:text-white'}`}
-                                                    >
-                                                        A
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setInvoiceType('B')}
-                                                        className={`px-2 py-1 rounded-md text-[10px] font-black transition-all ${invoiceType === 'B' ? 'bg-white text-brand-charcoal shadow-sm' : 'text-slate-400 hover:text-white'}`}
-                                                    >
-                                                        B
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
+                                         <input
+                                             type="text"
+                                             className="w-32 bg-transparent text-white text-lg font-data font-black outline-none border-b-2 border-slate-700 focus:border-brand-red transition-all text-center tracking-widest h-[28px]"
+                                             value={rawInvoiceNum}
+                                             onChange={(e) => handleInvoiceChange(e.target.value)}
+                                             onBlur={handleInvoiceBlur}
+                                             onFocus={(e) => e.target.select()}
+                                             placeholder={isOs ? 'OS-000001' : '000001'}
+                                         />
+                                         <div className="flex bg-white/10 border border-white/10 rounded-lg p-1 shadow-md shrink-0">
+                                             <button
+                                                 type="button"
+                                                 disabled={isOs}
+                                                 onClick={() => setInvoiceType('A')}
+                                                 className={`px-3 py-1.5 rounded-md text-[11px] font-black transition-all ${invoiceType === 'A' ? 'bg-white text-brand-charcoal shadow-sm' : 'text-slate-400 hover:text-white'} ${isOs ? 'opacity-20 cursor-not-allowed' : ''}`}
+                                             >
+                                                 A
+                                             </button>
+                                             <button
+                                                 type="button"
+                                                 disabled={isOs}
+                                                 onClick={() => setInvoiceType('B')}
+                                                 className={`px-3 py-1.5 rounded-md text-[11px] font-black transition-all ${invoiceType === 'B' ? 'bg-white text-brand-charcoal shadow-sm' : 'text-slate-400 hover:text-white'} ${isOs ? 'opacity-20 cursor-not-allowed' : ''}`}
+                                             >
+                                                 B
+                                             </button>
+                                         </div>
                                         <button
                                             type="button"
                                             onClick={() => {
@@ -847,7 +849,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                     </button>
                                 </div>
                             </div>
-                             <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
+                              <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default min-h-[65px] flex flex-col justify-center">
                                 <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><Tag size={12} /> Accounting Label</label>
                                 <select 
                                     className="w-full bg-surface border border-border-default rounded-xl px-2 py-1.5 text-xs font-black text-text-primary outline-none focus:ring-2 focus:ring-brand-red/10 appearance-none cursor-pointer uppercase"
@@ -861,8 +863,11 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                     ))}
                                 </select>
                             </div>
-
-                             <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default relative h-[68px]">
+                              <div 
+                                 className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default relative min-h-[65px] flex flex-col justify-center"
+                                onMouseEnter={() => setIsCustomerSearchOpen(true)}
+                                onMouseLeave={() => setIsCustomerSearchOpen(false)}
+                            >
                                 <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><User size={12} /> Customer Name</label>
                                 <div className="relative">
                                     <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"><Users size={12} /></div>
@@ -875,19 +880,18 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                         onChange={(e) => {
                                             setCustomerSearchQuery(e.target.value);
                                             setCustomerName(e.target.value);
-                                            setIsCustomerSearchOpen(true);
                                             setCustomerHighlightedIndex(0);
                                             
                                             if (!e.target.value) setCustomerId(null);
                                         }}
                                         onFocus={(e) => {
                                             e.target.select();
-                                            setIsCustomerSearchOpen(true);
                                         }}
                                         onKeyDown={(e) => {
                                             const filtered = customers.filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()));
                                             if (e.key === 'ArrowDown') {
                                                 e.preventDefault();
+                                                setIsCustomerSearchOpen(true);
                                                 setCustomerHighlightedIndex(prev => Math.min(prev + 1, filtered.length - 1));
                                             } else if (e.key === 'ArrowUp') {
                                                 e.preventDefault();
@@ -907,7 +911,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                         }}
                                     />
                                     {isCustomerSearchOpen && (
-                                        <div className="absolute z-[110] left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-xl shadow-xl max-h-[200px] overflow-y-auto overflow-x-hidden">                                             {customers.filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase())).length > 0 ? (
+                                        <div className="absolute z-[110] left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-xl shadow-xl max-h-[200px] overflow-y-auto overflow-x-hidden animate-fade-in">                                             {customers.filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase())).length > 0 ? (
                                                 customers.filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase())).map((c, index) => (
                                                     <button
                                                         key={c.id}
@@ -937,7 +941,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         <Plus size={12} />
-                                                        <span className="text-[9px] font-black uppercase tracking-widest text-brand-red">Create New Customer: {customerSearchQuery.toUpperCase()}</span>
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-red">Create New: {customerSearchQuery.toUpperCase()}</span>
                                                     </div>
                                                 </button>
                                             )}
@@ -953,25 +957,15 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                 </div>
                             </div>
 
-                             <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
-                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><Truck size={12} /> Fulfillment</label>
-                                <select className="w-full bg-surface border border-border-default rounded-xl px-2 py-1.5 text-xs outline-none shadow-sm cursor-pointer font-bold text-text-primary h-[32px]" value={fulfillmentStatus} onChange={(e) => { setFulfillmentStatus(e.target.value as 'pickup' | 'delivered' | 'out');  }}>
-                                    <option value="pickup">Store Pickup</option>
-                                    <option value="out">Product Out</option>
-                                    <option value="delivered">Delivered</option>
-                                </select>
-
-                            </div>
-
-                            <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
-                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><CreditCard size={12} strokeWidth={2.5} /> Settlement</label>
-                                <div className="grid grid-cols-2 gap-1.5">
+                              <div className="lg:col-span-6 p-2 bg-subtle rounded-xl border border-border-default min-h-[85px] shadow-sm flex flex-col justify-between">
+                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2 flex items-center gap-2"><CreditCard size={12} strokeWidth={2.5} /> Settlement</label>
+                                <div className="grid grid-cols-2 gap-2">
                                     {PAYMENT_MODES.slice(0, 2).map(mode => (
                                         <button
                                             key={mode.id}
                                             type="button"
                                             onClick={() => setPaymentMode(mode.id)}
-                                            className={`flex items-center justify-center px-1 py-1.5 rounded-lg border text-[8px] font-black transition-all ${paymentMode === mode.id ? 'bg-brand-red text-white border-brand-red shadow-sm' : 'bg-surface text-slate-400 border-border-default hover:border-slate-300'}`}
+                                            className={`flex items-center justify-center px-1 py-2 rounded-lg border text-[11px] font-black transition-all ${paymentMode === mode.id ? 'bg-brand-red text-white border-brand-red shadow-md' : 'bg-surface text-slate-400 border-border-default hover:border-slate-300'}`}
                                         >
                                             {mode.label}
                                         </button>
@@ -981,7 +975,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                             key={mode.id}
                                             type="button"
                                             onClick={() => setPaymentMode(mode.id)}
-                                            className={`flex items-center justify-center px-1 py-1 rounded-lg border text-[8px] font-black transition-all ${paymentMode === mode.id ? 'bg-brand-red text-white border-brand-red shadow-sm' : 'bg-surface text-slate-400 border-border-default hover:border-slate-300'}`}
+                                            className={`flex items-center justify-center px-1 py-2 rounded-lg border text-[11px] font-black transition-all ${paymentMode === mode.id ? 'bg-brand-red text-white border-brand-red shadow-md' : 'bg-surface text-slate-400 border-border-default hover:border-slate-300'}`}
                                         >
                                             {mode.label}
                                         </button>
@@ -989,11 +983,11 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                 </div>
                             </div>
 
-                            <div className="lg:col-span-4 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
-                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-2"><Percent size={12} /> Adjustments & Tax</label>
-                                <div className="flex gap-2">
+                            <div className="lg:col-span-6 p-2 bg-subtle rounded-xl border border-border-default min-h-[75px] shadow-sm flex flex-col justify-center">
+                                 <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2 flex items-center gap-2"><Percent size={12} /> Adjustments & Tax</label>
+                                 <div className="flex gap-2">
                                     <select
-                                        className={`flex-1 py-1 px-1 rounded-lg border text-[8px] font-black tracking-widest transition-all outline-none ${vatClassification === 'vatable' ? 'bg-slate-800 text-white border-slate-800' : 'bg-surface text-text-muted border-border-default'}`}
+                                        className={`flex-1 py-1 px-1 rounded-lg border text-[11px] font-black tracking-widest transition-all outline-none text-center ${vatClassification === 'vatable' ? 'bg-brand-red/10 text-brand-red border-brand-red/20 pr-4' : 'bg-surface text-text-muted border-border-default'}`}
                                         value={vatClassification}
                                         onChange={(e) => { setVatClassification(e.target.value as VatClassification);  }}
                                     >
@@ -1001,7 +995,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                         <option value="exempt">EXE</option>
                                         <option value="zero_rated">ZERO</option>
                                     </select>
-                                    <button type="button" onClick={() => { setIsDiscountEnabled(!isDiscountEnabled);  }} className={`flex-1 py-1 rounded-lg border text-[8px] font-black tracking-widest transition-all ${isDiscountEnabled ? 'bg-brand-orange text-white border-brand-orange' : 'bg-surface text-text-muted border-border-default'}`}>DSC</button>
+                                    <button type="button" onClick={() => { setIsDiscountEnabled(!isDiscountEnabled);  }} className={`flex-1 py-2 rounded-lg border text-[11px] font-black tracking-widest transition-all ${isDiscountEnabled ? 'bg-brand-orange text-white border-brand-orange shadow-md' : 'bg-surface text-text-muted border-border-default'}`}>Discount</button>
                                 </div>
 
                             </div>
