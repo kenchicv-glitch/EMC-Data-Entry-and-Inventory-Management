@@ -41,7 +41,7 @@ export default function Login() {
     };
 
     return (
-        <div className="min-h-screen relative flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8 font-sans overflow-hidden">
+        <div className="min-h-screen relative flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8 font-sans overflow-hidden text-slate-900" data-theme="light">
             {/* Dynamic Background Elements - Darker & Sharper */}
             <div className="fixed inset-0 bg-[#0a0a0b] z-0">
                 <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-brand-red-deep/30 rounded-full blur-[80px] animate-pulse"></div>

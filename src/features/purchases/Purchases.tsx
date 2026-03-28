@@ -510,21 +510,77 @@ export default function Purchases() {
                                                                             <button onClick={(e) => { e.stopPropagation(); handleEditPurchase(group); }} className="text-[9px] font-black bg-text-primary text-bg-base px-3 py-1 rounded uppercase tracking-tighter hover:opacity-90 transition-opacity">EDIT</button>
                                                                         </div>
                                                                     </div>
-                                                                    <div className="space-y-3">
-                                                                        {group.items.map((item, idx) => (
-                                                                            <div key={idx} className="flex justify-between items-start text-xs border-b border-border-muted pb-2 last:border-0">
-                                                                                <div>
-                                                                                    <p className="font-bold text-text-primary">{item.products?.name}</p>
-                                                                                    <p className="text-[9px] text-text-muted font-data">UNIT PRICE: ₱{Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                                                    <div className="flex flex-col lg:flex-row gap-8">
+                                                                        <div className="flex-1 space-y-2">
+                                                                            {group.items.map((item, idx) => (
+                                                                                <div key={idx} className="flex justify-between items-start text-xs border-b border-border-muted pb-2 last:border-0 hover:bg-bg-base/50 p-1 -mx-1 rounded transition-colors">
+                                                                                    <div className="pr-4">
+                                                                                        <p className="font-bold text-text-primary text-[10px] leading-relaxed">{item.products?.name}</p>
+                                                                                        <p className="text-[8px] text-text-muted font-data mt-0.5">UNIT PRICE: ₱{Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                                                                    </div>
+                                                                                    <div className="text-right shrink-0">
+                                                                                        <p className="font-bold text-text-primary text-[10px]">x{item.quantity}</p>
+                                                                                        <p className="text-[10px] text-text-secondary font-data font-black">₱{(item.total_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                                                                    </div>
                                                                                 </div>
-                                                                                <div className="text-right">
-                                                                                    <p className="font-bold text-text-primary">x{item.quantity}</p>
-                                                                                    <p className="text-[10px] text-text-secondary font-data font-black">₱{(item.total_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                                                            ))}
+                                                                        </div>
+                                                                        
+                                                                        <div className="w-full lg:w-80 shrink-0">
+                                                                            <div className="bg-bg-subtle/50 p-5 rounded-2xl space-y-3 border-2 border-brand-red h-full flex flex-col justify-center">
+                                                                                <p className="text-[9px] font-black text-text-secondary uppercase tracking-widest">Financial Summary</p>
+                                                                                <div className="space-y-1.5 self-center w-full">
+                                                                                    <div className="flex justify-between text-[10px] items-center pb-2 border-b border-border-default/30 mb-1">
+                                                                                        <span className="text-text-muted font-bold uppercase tracking-tight text-[8px]">Payment Status</span>
+                                                                                        <span className={`px-2 py-0.5 rounded-full font-black uppercase text-[8px] tracking-widest ${group.payment_status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : group.payment_status === 'partial' ? 'bg-amber-500/10 text-amber-500' : 'bg-brand-red/10 text-brand-red'}`}>{group.payment_status || 'unpaid'}</span>
+                                                                                    </div>
+                                                                                    {group.total_vat > 0 ? (
+                                                                                        <>
+                                                                                            <div className="flex justify-between text-[10px]">
+                                                                                                <span className="text-text-muted font-medium">Total (VAT Inc.)</span>
+                                                                                                <span className="font-data font-bold">₱{(group.total_base + group.total_vat).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                                                            </div>
+                                                                                            <div className="flex justify-between text-[10px]">
+                                                                                                <span className="text-text-muted font-medium">Less VAT</span>
+                                                                                                <span className="font-data font-bold">- ₱{group.total_vat.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                                                            </div>
+                                                                                            <div className="flex justify-between text-[10px] pt-1 border-t border-border-default/30">
+                                                                                                <span className="text-text-primary font-bold">Amount Net of VAT</span>
+                                                                                                <span className="font-data font-bold text-emerald-500">₱{group.total_base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                                                            </div>
+                                                                                            <div className="flex justify-between text-[10px]">
+                                                                                                <span className={`font-medium ${group.total_discount > 0 ? 'text-brand-orange' : 'text-text-muted'}`}>Less: Discount</span>
+                                                                                                <span className={`font-data font-bold ${group.total_discount > 0 ? 'text-brand-orange' : 'text-text-muted'}`}>
+                                                                                                    {group.total_discount > 0 ? `- ₱${group.total_discount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '₱0.00'}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                            <div className="flex justify-between text-[10px]">
+                                                                                                <span className="text-text-muted font-medium">Add: VAT</span>
+                                                                                                <span className="font-data font-bold text-brand-red">+ ₱{group.total_vat.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                                                            </div>
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <>
+                                                                                            <div className="flex justify-between text-[10px]">
+                                                                                                <span className="text-text-muted font-medium">Initial Sub-Total</span>
+                                                                                                <span className="font-data font-bold">₱{group.total_base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                                                            </div>
+                                                                                            <div className="flex justify-between text-[10px]">
+                                                                                                <span className={`font-medium ${group.total_discount > 0 ? 'text-brand-orange' : 'text-text-muted'}`}>Less: Discount</span>
+                                                                                                <span className={`font-data font-bold ${group.total_discount > 0 ? 'text-brand-orange' : 'text-text-muted'}`}>
+                                                                                                    {group.total_discount > 0 ? `- ₱${group.total_discount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '₱0.00'}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </>
+                                                                                    )}
+                                                                                    <div className="pt-2 border-t-2 border-border-default flex justify-between items-center text-sm font-black text-text-primary mt-1">
+                                                                                        <span className="uppercase tracking-widest text-[9px]">AMOUNT DUE</span>
+                                                                                        <span className="text-xl font-data tracking-tight">₱{group.grand_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                                                    </div>
                                                                                 </div>
                                                                             </div>
-                                                                        ))}
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="pt-2 border-t border-border-muted flex flex-col items-end gap-1">{group.total_discount > 0 && <span className="text-[10px] text-brand-orange">Discount: -₱{group.total_discount.toLocaleString()}</span>}<span className="text-sm font-black text-brand-red font-data">Total: ₱{group.grand_total.toLocaleString()}</span></div>
                                                                 </div>
                                                             </td>
                                                         </tr>

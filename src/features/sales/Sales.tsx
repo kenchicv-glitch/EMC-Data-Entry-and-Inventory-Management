@@ -1,4 +1,3 @@
-import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useMemo, Fragment } from 'react';
 import {
     Search, ChevronDown, Receipt, ShoppingBag, Download, Trash2, User, Truck, Clock, CheckCircle2, PackageSearch, RotateCcw, Grid, Tag, SlidersHorizontal
@@ -11,11 +10,12 @@ import { useSales } from './hooks/useSales';
 import { useModal } from '../../shared/hooks/useModal';
 import { startOfMonth } from 'date-fns';
 import { type Sale, type GroupedSale } from './types/sale';
+import OsEncodingModal from './components/OsEncodingModal';
 
 export default function Sales() {
     const { role } = useAuth();
-    const navigate = useNavigate();
     const { openSalesModal } = useModal();
+    const [isOsEncodingOpen, setIsOsEncodingOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const { sales, refunds, isLoading: hookLoading, deleteSales, fetchSales } = useSales(startOfMonth(selectedDate).toISOString());
 
@@ -199,7 +199,7 @@ export default function Sales() {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => navigate('/express-sales')}
+                        onClick={() => setIsOsEncodingOpen(true)}
                         className="flex items-center gap-2 bg-surface border border-border-default text-text-secondary px-5 py-3 rounded-2xl font-bold text-sm hover:bg-subtle transition-all shadow-sm"
                     >
                         <Grid size={18} /> OS ENCODING
@@ -458,34 +458,51 @@ export default function Sales() {
                                                                         </div>
                                                                     </div>
 
-                                                                    <div className="bg-subtle/50 p-6 rounded-2xl space-y-4">
+                                                                    <div className="bg-bg-subtle/50 p-6 rounded-2xl space-y-4 border-2 border-brand-red">
                                                                         <p className="text-[9px] font-black text-text-secondary uppercase tracking-widest">Financial Summary</p>
                                                                         <div className="space-y-2">
                                                                             <div className="flex justify-between text-[10px] items-center">
                                                                                 <span className="text-text-muted font-bold uppercase tracking-tight">Payment Mode</span>
                                                                                 <span className="bg-brand-red/10 text-brand-red px-3 py-1 rounded-full font-black uppercase text-[9px]">{sale.payment_mode}</span>
                                                                             </div>
-                                                                            {!(sale.is_os || sale.grand_total < 101) && (
+                                                                            {!(sale.is_os || sale.grand_total < 101) ? (
                                                                                 <>
                                                                                     <div className="flex justify-between text-xs pt-2">
-                                                                                        <span className="text-text-muted font-medium">VATable Sales (Tax Base)</span>
-                                                          <span className="font-data font-bold">{formatCurrency((sale.total_vat > 0 ? (sale.total_base / 1.12) : 0))}</span>
-                                                      </div>
-                                                      <div className="flex justify-between text-xs">
-                                                          <span className="text-text-muted font-medium">VAT Amount (12%)</span>
-                                                          <span className="font-data font-bold text-brand-red">{formatCurrency(sale.total_vat)}</span>
+                                                                                        <span className="text-text-muted font-medium">Total Sales (VAT Inclusive)</span>
+                                                                                        <span className="font-data font-bold">{formatCurrency(sale.total_base + sale.total_discount)}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between text-xs">
+                                                                                        <span className="text-text-muted font-medium">Less VAT</span>
+                                                                                        <span className="font-data font-bold">- {formatCurrency((sale.total_vat / (sale.total_base > 0 ? (sale.total_base - sale.total_discount) : 1)) * (sale.total_base + sale.total_discount) || 0)}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between text-xs pt-1 border-t border-border-default/30 mt-1">
+                                                                                        <span className="text-text-primary font-bold">Amount Net of VAT</span>
+                                                                                        <span className="font-data font-bold text-emerald-500">{formatCurrency((sale.total_base + sale.total_discount) - ((sale.total_vat / (sale.total_base > 0 ? (sale.total_base - sale.total_discount) : 1)) * (sale.total_base + sale.total_discount) || 0))}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between text-xs">
+                                                                                        <span className={`font-medium ${sale.total_discount > 0 ? 'text-brand-orange' : 'text-text-muted'}`}>Less: Discount (SC/PWD/NAAC/MOV/SP)</span>
+                                                                                        <span className={`font-data font-bold ${sale.total_discount > 0 ? 'text-brand-orange' : 'text-text-muted'}`}>
+                                                                                            {sale.total_discount > 0 ? `- ${formatCurrency(sale.total_discount)}` : formatCurrency(0)}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between text-xs">
+                                                                                        <span className="text-text-muted font-medium">Add: VAT</span>
+                                                                                        <span className="font-data font-bold text-brand-red">+ {formatCurrency(sale.total_vat)}</span>
                                                                                     </div>
                                                                                 </>
-                                                                            )}
-                                                                            <div className="flex justify-between text-xs pt-1">
-                                                                                <span className="text-text-muted font-medium">Initial Sub-Total</span>
-                                                              <span className="font-data font-bold">{formatCurrency(sale.total_base)}</span>
-                                              </div>
-                                              {sale.total_discount > 0 && (
-                                                  <div className="flex justify-between text-xs">
-                                                      <span className="text-brand-orange font-medium">Applied Discount</span>
-                                                      <span className="font-data font-bold text-brand-orange">- {formatCurrency(sale.total_discount)}</span>
-                                                                                </div>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <div className="flex justify-between text-xs pt-1">
+                                                                                        <span className="text-text-muted font-medium">Initial Sub-Total</span>
+                                                                                        <span className="font-data font-bold">{formatCurrency(sale.total_base)}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between text-xs">
+                                                                                        <span className={`font-medium ${sale.total_discount > 0 ? 'text-brand-orange' : 'text-text-muted'}`}>Less: Discount (SC/PWD/NAAC/MOV/SP)</span>
+                                                                                        <span className={`font-data font-bold ${sale.total_discount > 0 ? 'text-brand-orange' : 'text-text-muted'}`}>
+                                                                                            {sale.total_discount > 0 ? `- ${formatCurrency(sale.total_discount)}` : formatCurrency(0)}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </>
                                                                             )}
                                                                             {Number(sale.delivery_fee) > 0 && (
                                                                                 <div className="flex justify-between text-xs pt-1 border-t border-border-default/50 mt-1">
@@ -516,6 +533,9 @@ export default function Sales() {
                 </div>
             </div>
 
+            {isOsEncodingOpen && (
+                <OsEncodingModal onClose={() => setIsOsEncodingOpen(false)} />
+            )}
         </div >
     );
 }

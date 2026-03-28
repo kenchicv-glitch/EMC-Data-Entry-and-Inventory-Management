@@ -115,12 +115,12 @@ export default function CustomerModal({ isOpen, onClose, onSubmit, customer, isL
                             <h2 className="text-xl font-black text-text-primary uppercase tracking-tight">
                                 {customer ? 'Edit Customer' : 'Add New Customer'}
                             </h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                            <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">
                                 Profile & Credit Configuration
                             </p>
                         </div>
                     </div>
-                    <button onClick={handleSafeClose} className="p-2.5 rounded-2xl hover:bg-surface hover:shadow-lg transition-all text-slate-400 hover:text-brand-red active:scale-90">
+                    <button onClick={handleSafeClose} className="p-2.5 rounded-2xl hover:bg-surface hover:shadow-lg transition-all text-text-muted hover:text-brand-red active:scale-90">
                         <X size={20} />
                     </button>
                 </div>
@@ -131,7 +131,7 @@ export default function CustomerModal({ isOpen, onClose, onSubmit, customer, isL
                         <div className="grid grid-cols-1 gap-5">
                             {/* Name */}
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1 flex items-center gap-2">
                                     <User size={12} /> Name *
                                 </label>
                                 <input
@@ -144,7 +144,7 @@ export default function CustomerModal({ isOpen, onClose, onSubmit, customer, isL
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1 flex items-center gap-2">
                                         <Phone size={12} /> Phone
                                     </label>
                                     <input
@@ -155,7 +155,7 @@ export default function CustomerModal({ isOpen, onClose, onSubmit, customer, isL
                                 </div>
 
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1 flex items-center gap-2">
                                         <CreditCard size={12} /> Credit Limit
                                     </label>
                                     <input
@@ -168,7 +168,7 @@ export default function CustomerModal({ isOpen, onClose, onSubmit, customer, isL
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1 flex items-center gap-2">
                                     <Mail size={12} /> Email
                                 </label>
                                 <input
@@ -179,7 +179,7 @@ export default function CustomerModal({ isOpen, onClose, onSubmit, customer, isL
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1 flex items-center gap-2">
                                     <MapPin size={12} /> Address
                                 </label>
                                 <textarea
@@ -191,14 +191,14 @@ export default function CustomerModal({ isOpen, onClose, onSubmit, customer, isL
                             </div>
 
                             {/* Active Toggle */}
-                            <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <div className="flex items-center gap-3 p-4 bg-subtle rounded-2xl border border-border-default">
                                 <input
                                     type="checkbox"
                                     {...register('is_active')}
                                     id="is_active"
                                     className="w-5 h-5 rounded-lg accent-brand-red cursor-pointer"
                                 />
-                                <label htmlFor="is_active" className="text-xs font-black text-brand-charcoal uppercase tracking-widest cursor-pointer select-none">
+                                <label htmlFor="is_active" className="text-xs font-black text-text-primary uppercase tracking-widest cursor-pointer select-none">
                                     Account Active and Eligible for Terms
                                 </label>
                             </div>
@@ -206,7 +206,7 @@ export default function CustomerModal({ isOpen, onClose, onSubmit, customer, isL
                     </form>
                 </div>
 
-                <div className="p-6 bg-slate-50 border-t border-slate-100 mt-auto sticky bottom-0 z-10">
+                <div className="p-6 bg-subtle border-t border-border-default mt-auto sticky bottom-0 z-10">
                     <button
                         type="submit"
                         form="customer-form"

@@ -118,11 +118,11 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                         <h2 className="text-xl font-black text-text-primary uppercase tracking-tight">
                             {supplier ? 'Edit Supplier' : 'Add New Supplier'}
                         </h2>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                        <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">
                             Supplier Details & Contact Information
                         </p>
                     </div>
-                    <button onClick={handleSafeClose} className="p-2.5 rounded-2xl hover:bg-surface hover:shadow-lg transition-all text-slate-400 hover:text-brand-red active:scale-90">
+                    <button onClick={handleSafeClose} className="p-2.5 rounded-2xl hover:bg-surface hover:shadow-lg transition-all text-text-muted hover:text-brand-red active:scale-90">
                         <X size={20} />
                     </button>
                 </div>
@@ -131,7 +131,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                 <form onSubmit={handleSubmit(handleFormSubmit)} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto scrollbar-hide">
                     <div className="grid grid-cols-1 gap-6">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Supplier Name *</label>
+                            <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Supplier Name *</label>
                             <input
                                 {...register('name')}
                                 className={`w-full bg-subtle border ${errors.name ? 'border-red-200' : 'border-border-default'} rounded-xl px-4 py-2 text-sm font-bold text-text-primary focus:bg-surface focus:border-brand-red outline-none transition-all placeholder:text-slate-300`}
@@ -142,7 +142,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Contact Person</label>
+                                <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Contact Person</label>
                                 <input
                                     {...register('contact_person')}
                                     className="w-full bg-subtle border border-border-default rounded-xl px-4 py-2 text-sm font-bold text-text-primary focus:bg-surface focus:border-brand-red outline-none transition-all placeholder:text-slate-300"
@@ -150,7 +150,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Phone Number</label>
+                                <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Phone Number</label>
                                 <input
                                     {...register('phone')}
                                     className="w-full bg-subtle border border-border-default rounded-xl px-4 py-2 text-sm font-bold text-text-primary focus:bg-surface focus:border-brand-red outline-none transition-all placeholder:text-slate-300"
@@ -160,7 +160,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Email Address</label>
+                            <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Email Address</label>
                             <input
                                 {...register('email')}
                                 className={`w-full bg-subtle border ${errors.email ? 'border-red-200' : 'border-border-default'} rounded-xl px-4 py-2 text-sm font-bold text-text-primary focus:bg-surface focus:border-brand-red outline-none transition-all placeholder:text-slate-300`}
@@ -170,7 +170,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Tax Identification Number (TIN)</label>
+                                <label className="text-[10px] font-black text-text-secondary uppercase tracking-[0.2em] ml-1">Tax Identification Number (TIN)</label>
                                 <input
                                     {...register('supplier_tin')}
                                     className="w-full bg-subtle border-2 border-transparent rounded-2xl px-5 py-3.5 text-sm font-bold text-text-primary focus:bg-surface focus:border-brand-red focus:shadow-[0_0_0_4px_rgba(238,62,62,0.1)] transition-all outline-none placeholder:text-slate-300"
@@ -178,7 +178,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">VAT Registered?</label>
+                                <label className="text-[10px] font-black text-text-secondary uppercase tracking-[0.2em] ml-1">VAT Registered?</label>
                                 <div className="flex items-center h-[52px]">
                                     <button
                                         type="button"
@@ -195,7 +195,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Address</label>
+                            <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Address</label>
                             <textarea
                                 {...register('address')}
                                 rows={2}
@@ -205,7 +205,7 @@ export default function SupplierModal({ isOpen, onClose, onSubmit, supplier, isL
                         </div>
                     </div>
 
-                    <div className="p-6 bg-slate-50 border-t border-slate-100 mt-auto sticky bottom-0 z-10">
+                    <div className="p-6 bg-subtle border-t border-border-default mt-auto sticky bottom-0 z-10">
                         <button
                             type="submit"
                             disabled={isLoading}

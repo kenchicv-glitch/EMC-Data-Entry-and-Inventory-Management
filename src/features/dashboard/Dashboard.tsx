@@ -20,6 +20,7 @@ import type { Product as ModalProduct } from '../inventory/types/product';
 import SalesModal, { type SalesModalProps } from '../sales/components/SalesModal';
 import ReportModal from '../../features/reports/components/ReportModal';
 import Calendar from '../../features/reports/components/Calendar';
+import OsEncodingModal from '../sales/components/OsEncodingModal';
 
 interface DailyStat {
     totalSales: number;
@@ -87,6 +88,7 @@ export default function Dashboard() {
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [selectedSaleForEdit, setSelectedSaleForEdit] = useState<SalesModalProps['editData']>();
     const [isSalesModalOpen, setIsSalesModalOpen] = useState(false);
+    const [isOsEncodingOpen, setIsOsEncodingOpen] = useState(false);
     const navigate = useNavigate();
     const { theme } = useTheme();
     const isDark = theme === 'dark';
@@ -313,10 +315,10 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={() => navigate('/express-sales')}
+                        onClick={() => setIsOsEncodingOpen(true)}
                         className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-black text-xs hover:bg-emerald-700 transition-all shadow-lg active:scale-95"
                     >
-                        <Zap size={18} /> EXPRESS ENTRY
+                        <Zap size={18} /> OS ENCODING
                     </button>
                     <button onClick={() => setIsReportModalOpen(true)} className="flex items-center gap-2 bg-text-primary text-text-inverse px-5 py-2.5 rounded-2xl font-black text-xs hover:opacity-90 transition-all shadow-lg active:scale-95">
                         <Plus size={18} /> GENERATE REPORT
@@ -603,6 +605,10 @@ export default function Dashboard() {
                 onSuccess={() => fetchDashboardData()}
                 editData={selectedSaleForEdit}
             />
+
+            {isOsEncodingOpen && (
+                <OsEncodingModal onClose={() => setIsOsEncodingOpen(false)} />
+            )}
         </div>
     );
 }

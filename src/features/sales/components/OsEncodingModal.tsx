@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../shared/lib/supabase';
+import { createPortal } from 'react-dom';
+import { supabase } from '../../../shared/lib/supabase';
 import {
-    Save, Plus, Trash2, ArrowLeft, Search, ShoppingCart
+    Save, Plus, Trash2, Search, ShoppingCart, X
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { useAudit } from '../../shared/hooks/useAudit';
-import { useBranch } from '../../shared/hooks/useBranch';
-import type { Product } from '../inventory/types/product';
+import { useAudit } from '../../../shared/hooks/useAudit';
+import { useBranch } from '../../../shared/hooks/useBranch';
+import type { Product } from '../../inventory/types/product';
 import { toast } from 'sonner';
-import { isSmartMatch } from '../../shared/lib/searchUtils';
+import { isSmartMatch } from '../../../shared/lib/searchUtils';
 
 interface ExpressRow {
     id: string;
@@ -28,8 +28,7 @@ interface ExpressRow {
     invoice_type: 'A' | 'B';
 }
 
-export default function ExpressSales() {
-    const navigate = useNavigate();
+export default function OsEncodingModal({ onClose }: { onClose: () => void }) {
     const { logAction } = useAudit();
     const { activeBranchId } = useBranch();
     const [rows, setRows] = useState<ExpressRow[]>([createEmptyRow()]);
@@ -241,6 +240,9 @@ export default function ExpressSales() {
             const nextInvoice = incrementInvoice(firstInvoice);
             setRows([{ ...createEmptyRow(), invoice_number: nextInvoice }]);
             
+            // Trigger auto-update in Sales dashboard
+            window.dispatchEvent(new CustomEvent('refresh-data'));
+
             setTimeout(() => {
                 searchInputRefs.current[0]?.focus();
             }, 100);
@@ -256,62 +258,65 @@ export default function ExpressSales() {
         }
     };
 
-    return (
-        <div className="space-y-6 animate-fade-in pb-10">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => navigate(-1)} className="p-2 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-brand-red transition-all">
-                        <ArrowLeft size={18} />
-                    </button>
-                    <div>
-                        <h1 className="text-2xl font-black text-brand-charcoal tracking-tight flex items-center gap-2">
-                            <ShoppingCart className="text-brand-red" size={24} /> OS Encoding
-                        </h1>
-                        <p className="text-xs text-slate-500 font-medium">Bulk encode multiple items to one or more OS invoices</p>
+    return createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/85 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-bg-base w-[1200px] max-w-full rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+                <div className="p-8 pb-6 flex items-center justify-between border-b border-border-default shrink-0">
+                    <div className="flex items-center gap-3 text-text-primary">
+                        <div className="p-2.5 bg-brand-red/10 rounded-xl">
+                            <ShoppingCart className="text-brand-red" size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-black tracking-tight">OS Encoding</h2>
+                            <p className="text-sm text-text-muted mt-1 uppercase tracking-wider font-bold">Bulk encode multiple items to one or more OS invoices</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <button
+                            ref={saveButtonRef}
+                            onClick={handleSaveAll}
+                            disabled={saving || loading}
+                            className="flex items-center gap-2 bg-brand-red text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-brand-red-dark transition-all shadow-red lg active:scale-95 disabled:opacity-50 ring-offset-2 focus:ring-2 focus:ring-brand-red"
+                            onKeyDown={(e) => {
+                                if (e.key === 'Escape') {
+                                    searchInputRefs.current[rows.length - 1]?.focus();
+                                }
+                            }}
+                        >
+                            {saving ? 'SAVING...' : <><Save size={18} /> SAVE ALL ENTRIES</>}
+                        </button>
+                        <button onClick={onClose} className="p-2 hover:bg-surface rounded-full transition-colors text-text-muted hover:text-brand-red">
+                            <X size={24} />
+                        </button>
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button
-                        ref={saveButtonRef}
-                        onClick={handleSaveAll}
-                        disabled={saving || loading}
-                        className="flex items-center gap-2 bg-brand-red text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-brand-red-dark transition-all shadow-red disabled:opacity-50 ring-offset-2 focus:ring-2 focus:ring-brand-red"
-                        onKeyDown={(e) => {
-                            if (e.key === 'Escape') {
-                                searchInputRefs.current[rows.length - 1]?.focus();
-                            }
-                        }}
-                    >
-                        {saving ? 'SAVING...' : <><Save size={18} /> SAVE ALL ENTRIES</>}
-                    </button>
-                </div>
-            </div>
 
-            <div className="bg-white rounded-[32px] border border-slate-100 shadow-xl min-h-[500px]">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="bg-slate-50 border-b border-slate-100 [&>th:first-child]:rounded-tl-[32px] [&>th:last-child]:rounded-tr-[32px]">
-                            <th className="px-6 py-4 text-[10px] font-black text-brand-charcoal uppercase tracking-widest w-48 text-center">Invoice #</th>
-                            <th className="px-6 py-4 text-[10px] font-black text-brand-charcoal uppercase tracking-widest">Product Search</th>
-                            <th className="px-6 py-4 text-[10px] font-black text-brand-charcoal uppercase tracking-widest w-32 text-center">Qty</th>
-                            <th className="px-6 py-4 text-[10px] font-black text-brand-charcoal uppercase tracking-widest w-40 text-right">Unit Price</th>
-                            <th className="px-6 py-4 text-[10px] font-black text-brand-charcoal uppercase tracking-widest w-44 text-right">Total</th>
-                            <th className="px-6 py-4 text-[10px] font-black text-slate-600 uppercase tracking-widest w-16"></th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                        {rows.map((row, index) => {
-                            const isSameAsPrevious = index > 0 && row.invoice_number === rows[index - 1].invoice_number;
-                            return (
-                            <tr key={row.id} className="hover:bg-slate-50/50 transition-colors group">
-                                <td className="px-6 py-3">
-                                    <div className={`flex flex-col gap-1.5 items-center transition-opacity ${isSameAsPrevious ? 'opacity-0 pointer-events-none' : ''}`}>
-                                        <div className="flex items-center gap-1.5">
-                                            <input
-                                                type="text"
-                                                className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-data font-bold focus:border-brand-red outline-none text-center"
-                                                value={row.invoice_number}
-                                                ref={el => { invoiceInputRefs.current[index] = el; }}
+                <div className="overflow-y-auto p-8 flex-1">
+                    <div className="bg-surface rounded-2xl border border-border-default shadow-sm min-h-[500px]">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-subtle border-b border-border-default [&>th:first-child]:rounded-tl-2xl [&>th:last-child]:rounded-tr-2xl">
+                                    <th className="px-6 py-4 text-[10px] font-black text-text-primary uppercase tracking-widest w-48 text-center">Invoice #</th>
+                                    <th className="px-6 py-4 text-[10px] font-black text-text-primary uppercase tracking-widest">Product Search</th>
+                                    <th className="px-6 py-4 text-[10px] font-black text-text-primary uppercase tracking-widest w-32 text-center">Qty</th>
+                                    <th className="px-6 py-4 text-[10px] font-black text-text-primary uppercase tracking-widest w-40 text-right">Unit Price</th>
+                                    <th className="px-6 py-4 text-[10px] font-black text-text-primary uppercase tracking-widest w-44 text-right">Total</th>
+                                    <th className="px-6 py-4 text-[10px] font-black text-text-muted uppercase tracking-widest w-16"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-subtle">
+                                {rows.map((row, index) => {
+                                    const isSameAsPrevious = index > 0 && row.invoice_number === rows[index - 1].invoice_number;
+                                    return (
+                                    <tr key={row.id} className="hover:bg-subtle transition-colors group">
+                                        <td className="px-6 py-3">
+                                            <div className={`flex flex-col gap-1.5 items-center transition-opacity ${isSameAsPrevious ? 'opacity-0 pointer-events-none' : ''}`}>
+                                                <div className="flex items-center gap-1.5">
+                                                    <input
+                                                        type="text"
+                                                        className="w-24 bg-background border border-border-default rounded-lg px-2 py-1 text-xs font-data font-bold focus:border-brand-red outline-none text-center text-text-primary"
+                                                        value={row.invoice_number}
+                                                        ref={el => { invoiceInputRefs.current[index] = el; }}
                                                 onChange={(e) => updateRow(index, { invoice_number: e.target.value })}
                                             />
                                             <button
@@ -323,29 +328,29 @@ export default function ExpressSales() {
                                                         : row.invoice_number.replace('OS-', '');
                                                     updateRow(index, { isOs: newIsOs, invoice_number: newInv });
                                                 }}
-                                                className={`px-1.5 py-0.5 rounded text-[8px] font-black transition-all ${row.isOs ? 'bg-brand-red text-white' : 'bg-slate-100 text-slate-400'}`}
+                                                        className={`px-1.5 py-0.5 rounded text-[8px] font-black transition-all ${row.isOs ? 'bg-brand-red text-white' : 'bg-surface text-text-muted border border-border-default'}`}
+                                                    >
+                                                        OS
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-3 relative">
+                                            <div 
+                                                className="relative"
+                                                onBlur={(e) => {
+                                                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                                        updateRow(index, { isSearchOpen: false });
+                                                    }
+                                                }}
                                             >
-                                                OS
-                                            </button>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-3 relative">
-                                    <div 
-                                        className="relative"
-                                        onBlur={(e) => {
-                                            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                                                updateRow(index, { isSearchOpen: false });
-                                            }
-                                        }}
-                                    >
-                                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
-                                        <input
-                                            type="text"
-                                            placeholder="Type product name..."
-                                            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:border-brand-red outline-none shadow-inner"
-                                            value={row.searchQuery}
-                                            ref={el => { searchInputRefs.current[index] = el; }}
+                                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Type product name..."
+                                                    className="w-full pl-9 pr-4 py-2 bg-background border border-border-default rounded-lg text-xs font-medium focus:border-brand-red outline-none shadow-sm text-text-primary"
+                                                    value={row.searchQuery}
+                                                    ref={el => { searchInputRefs.current[index] = el; }}
                                             onFocus={() => updateRow(index, { isSearchOpen: true })}
                                             onChange={(e) => updateRow(index, { searchQuery: e.target.value, isSearchOpen: true })}
                                             onKeyDown={(e) => {
@@ -381,15 +386,15 @@ export default function ExpressSales() {
                                                 }
                                             }}
                                         />
-                                        {row.isSearchOpen && (
-                                            <div tabIndex={-1} className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-2xl overflow-hidden max-h-60 overflow-y-auto">
-                                                {products.filter(p => isSmartMatch(p.name, row.searchQuery)).slice(0, 10).map((p, pIdx) => (
-                                                    <div
-                                                        key={p.id}
-                                                        tabIndex={0}
-                                                        className={`px-4 py-2 text-[11px] cursor-pointer flex justify-between items-center outline-none focus:bg-brand-red/10 focus:ring-1 focus:ring-brand-red focus:text-brand-red transition-all ${row.highlightedIndex === pIdx ? 'bg-brand-red/5 text-brand-red' : 'hover:bg-slate-50'}`}
-                                                        onClick={() => selectProduct(index, p)}
-                                                        onMouseEnter={() => updateRow(index, { highlightedIndex: pIdx })}
+                                                {row.isSearchOpen && (
+                                                    <div tabIndex={-1} className="absolute z-50 left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-lg shadow-2xl overflow-hidden max-h-60 overflow-y-auto">
+                                                        {products.filter(p => isSmartMatch(p.name, row.searchQuery)).slice(0, 10).map((p, pIdx) => (
+                                                            <div
+                                                                key={p.id}
+                                                                tabIndex={0}
+                                                                className={`px-4 py-2 text-[11px] cursor-pointer flex justify-between items-center outline-none focus:bg-brand-red/10 focus:ring-1 focus:ring-brand-red focus:text-brand-red transition-all ${row.highlightedIndex === pIdx ? 'bg-brand-red/5 text-brand-red' : 'hover:bg-subtle text-text-primary'}`}
+                                                                onClick={() => selectProduct(index, p)}
+                                                                onMouseEnter={() => updateRow(index, { highlightedIndex: pIdx })}
                                                         onFocus={() => updateRow(index, { highlightedIndex: pIdx })}
                                                         onKeyDown={(e) => {
                                                             if (e.key === 'Enter') {
@@ -410,24 +415,24 @@ export default function ExpressSales() {
                                                             }
                                                         }}
                                                     >
-                                                        <span className="font-bold">{p.name} {p.brand ? `[${p.brand}]` : ''}</span>
-                                                        <div className="flex gap-4">
-                                                        <span className={`text-slate-400 font-data ${p.stock_available <= 0 ? 'text-brand-red font-bold animate-pulse' : ''}`}>STK: {p.stock_available}</span>
-                                                        <span className="font-data font-black">₱{p.selling_price}</span>
-                                                        </div>
+                                                                        <span className="font-bold">{p.name} {p.brand ? `[${p.brand}]` : ''}</span>
+                                                                        <div className="flex gap-4">
+                                                                        <span className={`text-text-muted font-data ${p.stock_available <= 0 ? 'text-brand-red font-bold animate-pulse' : ''}`}>STK: {p.stock_available}</span>
+                                                                        <span className="font-data font-black">₱{p.selling_price}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-3">
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-data text-center focus:border-brand-red outline-none"
-                                        value={row.quantity}
-                                        ref={el => { qtyInputRefs.current[index] = el; }}
+                                                </td>
+                                                <td className="px-6 py-3">
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        className="w-full bg-background border border-border-default rounded-lg px-3 py-2 text-xs font-data text-center focus:border-brand-red outline-none text-text-primary"
+                                                        value={row.quantity}
+                                                        ref={el => { qtyInputRefs.current[index] = el; }}
                                         onChange={(e) => updateRow(index, { quantity: parseInt(e.target.value) || 0 })}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter') {
@@ -453,38 +458,41 @@ export default function ExpressSales() {
                                             }
                                         }}
                                     />
-                                </td>
-                                <td className="px-6 py-3 text-right">
-                                    <span className="text-xs font-data font-bold text-slate-600">₱{row.unit_price.toLocaleString()}</span>
-                                </td>
-                                <td className="px-6 py-3 text-right">
-                                    <span className="text-sm font-data font-black text-brand-charcoal">₱{row.total_price.toLocaleString()}</span>
-                                </td>
-                                <td className="px-6 py-3 text-right">
-                                    <button onClick={() => handleRemoveRow(index)} className="p-2 text-slate-300 hover:text-brand-red transition-colors opacity-0 group-hover:opacity-100">
-                                        <Trash2 size={16} />
-                                    </button>
-                                </td>
-                            </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-                <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <button onClick={handleAddRow} className="flex items-center gap-2 text-xs font-black text-brand-red hover:text-brand-red-dark uppercase tracking-widest transition-all">
-                            <Plus size={16} /> Add Item Line
-                        </button>
-                        <button onClick={handleNextInvoice} className="flex items-center gap-2 text-xs font-black text-slate-400 hover:text-brand-charcoal uppercase tracking-widest transition-all">
-                            <Plus size={16} /> Next OS Invoice
-                        </button>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grand Total ({rows.filter(r => r.product_id).length} Entries)</p>
-                        <p className="text-3xl font-black text-brand-charcoal font-data tracking-tight">₱{rows.reduce((sum, r) => sum + r.total_price, 0).toLocaleString()}</p>
+                                                </td>
+                                                <td className="px-6 py-3 text-right">
+                                                    <span className="text-xs font-data font-bold text-text-muted">₱{row.unit_price.toLocaleString()}</span>
+                                                </td>
+                                                <td className="px-6 py-3 text-right">
+                                                    <span className="text-sm font-data font-black text-text-primary">₱{row.total_price.toLocaleString()}</span>
+                                                </td>
+                                                <td className="px-6 py-3 text-right">
+                                                    <button onClick={() => handleRemoveRow(index)} className="p-2 text-text-muted hover:text-brand-red transition-colors opacity-0 group-hover:opacity-100">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        <div className="p-6 bg-subtle border-t border-border-default flex justify-between items-center rounded-b-2xl">
+                            <div className="flex items-center gap-4">
+                                <button onClick={handleAddRow} className="flex items-center gap-2 text-xs font-black text-brand-red hover:text-brand-red-dark uppercase tracking-widest transition-all">
+                                    <Plus size={16} /> Add Item Line
+                                </button>
+                                <button onClick={handleNextInvoice} className="flex items-center gap-2 text-xs font-black text-text-muted hover:text-text-primary uppercase tracking-widest transition-all">
+                                    <Plus size={16} /> Next OS Invoice
+                                </button>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[10px] font-black text-text-muted uppercase tracking-widest">Grand Total ({rows.filter(r => r.product_id).length} Entries)</p>
+                                <p className="text-3xl font-black text-text-primary font-data tracking-tight">₱{rows.reduce((sum, r) => sum + r.total_price, 0).toLocaleString()}</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div >
+        </div >,
+        document.body
     );
 }

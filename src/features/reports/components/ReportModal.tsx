@@ -83,7 +83,7 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
 
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md px-4">
-            <div className="w-full max-w-lg rounded-[32px] bg-white shadow-2xl border border-slate-100 flex flex-col animate-slide-up overflow-hidden">
+            <div className="w-full max-w-lg rounded-[32px] bg-surface shadow-2xl border border-border-default flex flex-col animate-slide-up overflow-hidden">
                 <div className="flex items-center justify-between px-8 py-6 bg-brand-charcoal">
                     <div className="flex items-center gap-3 text-white">
                         <div className="w-10 h-10 bg-brand-red rounded-xl flex items-center justify-center shadow-lg shadow-brand-red/20">
@@ -91,7 +91,7 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
                         </div>
                         <div>
                             <h2 className="text-lg font-black uppercase tracking-widest">Daily Report</h2>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Generate summary CSV</p>
+                            <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Generate summary CSV</p>
                         </div>
                     </div>
                     <button
@@ -111,8 +111,8 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
                     )}
 
                     <div className="space-y-4">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Select Report Date</label>
-                        <div className="p-2 bg-slate-50 rounded-3xl border border-slate-100">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-text-secondary ml-1">Select Report Date</label>
+                        <div className="p-2 bg-subtle rounded-3xl border border-border-default">
                             <Calendar
                                 selectedDate={selectedDate}
                                 onDateSelect={setSelectedDate}
@@ -122,21 +122,21 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
 
                     <div className="p-6 bg-brand-charcoal/5 rounded-3xl border border-brand-charcoal/5 space-y-4">
                         <div className="flex items-center justify-between">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Report Focus</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Report Focus</p>
                             <span className="px-3 py-1 bg-brand-red/10 text-brand-red text-[9px] font-black rounded-full uppercase">All Active Modules</span>
                         </div>
-                        <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                            Generating a report will compile all <span className="font-bold text-brand-charcoal">Sales</span>,
-                            <span className="font-bold text-brand-charcoal ml-1">Expenses</span>, and
-                            <span className="font-bold text-brand-charcoal ml-1">Purchases</span> for the selected date into a detailed CSV document.
+                        <p className="text-xs text-text-secondary leading-relaxed font-medium">
+                            Generating a report will compile all <span className="font-bold text-text-primary">Sales</span>,
+                            <span className="font-bold text-text-primary ml-1">Expenses</span>, and
+                            <span className="font-bold text-text-primary ml-1">Purchases</span> for the selected date into a detailed CSV document.
                         </p>
                     </div>
                 </div>
 
-                <div className="p-8 bg-slate-50 border-t border-slate-100 flex gap-4">
+                <div className="p-8 bg-subtle border-t border-border-default flex gap-4">
                     <button
                         onClick={onClose}
-                        className="flex-1 py-4 text-slate-500 font-bold text-xs uppercase tracking-widest hover:text-brand-charcoal transition-colors bg-white rounded-2xl border border-slate-200"
+                        className="flex-1 py-4 text-text-secondary font-bold text-xs uppercase tracking-widest hover:text-text-primary transition-colors bg-surface rounded-2xl border border-border-strong"
                     >
                         Cancel
                     </button>

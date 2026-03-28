@@ -108,7 +108,12 @@
     --radius: 0.75rem;
   }
 
+  [data-theme='light'] {
+    color-scheme: light;
+  }
+
   [data-theme="dark"] {
+    color-scheme: dark;
     --bg-base: #0D1117;
     --bg-surface: #161B22;
     --bg-subtle: #1C2128;

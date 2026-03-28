@@ -14,3 +14,4 @@
 - [/] Financial Accuracy: Automated tests for `ReportService.ts`
 - [ ] UI Consistency: Audit modals for centering and scroll-locking
 - [ ] Process: Add ADRs for ReportService and Permission Guards
+- [ ] change new purchase window formatting to be consistent with the formatting in new sale `medium` — 2026-03-26

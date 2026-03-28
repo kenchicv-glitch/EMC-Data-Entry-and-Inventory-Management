@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../../shared/lib/supabase';
-import { Truck, AlertCircle, Plus, Trash2, ShieldCheck, Clock, Search, Building2, Store, ChevronDown, User, X, Tag } from 'lucide-react';
+import { Truck, AlertCircle, Plus, Trash2, ShieldCheck, Clock, Search, ChevronDown, X, Tag } from 'lucide-react';
 import { supplierService } from '../../suppliers/services/supplierService';
 import type { Supplier } from '../../suppliers/types/supplier';
 import { useBranch } from '../../../shared/hooks/useBranch';
 import { useKeyboardNav } from '../../../shared/hooks/useKeyboardNav';
 import { toast } from 'sonner';
 import { isSmartMatch } from '../../../shared/lib/searchUtils';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../shared/lib/queryKeys';
 
 interface Product {
     id: string;
@@ -43,12 +45,14 @@ interface PurchaseRecord {
     unit_price: number;
     total_price: number;
     date: string;
+    received_date: string | null;
     invoice_number: string;
     supplier: string;
     status: 'pending' | 'received';
     payment_status?: 'unpaid' | 'partial' | 'paid';
     payment_date?: string | null;
     purchase_type: 'supplier' | 'transfer';
+    name?: string; // Product name for search query matching
 }
 
 interface PurchaseModalProps {
@@ -58,18 +62,18 @@ interface PurchaseModalProps {
     editData?: {
         invoiceNumber: string;
         supplier: string;
-        items: PurchaseItem[];
+        supplierId?: string | null;
+        items: PurchaseRecord[];
         status: 'pending' | 'received';
-        paymentStatus?: 'unpaid' | 'partial' | 'paid';
+        paymentStatus: 'unpaid' | 'partial' | 'paid';
         paymentDate?: string | null;
-        receivedDate?: string | null;
         date?: string;
+        receivedDate?: string | null;
         isVatEnabled: boolean;
         isDiscountEnabled: boolean;
-        purchaseType?: 'supplier' | 'transfer';
-        supplierId?: string | null;
         sourceBranchId?: number | null;
-        transactionLabel?: string | null;
+        purchaseType: 'supplier' | 'transfer';
+        transactionLabel?: string;
     };
 }
 
@@ -117,7 +121,12 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
     const [supplierTin, setSupplierTin] = useState('');
     const [branches, setBranches] = useState<Branch[]>([]);
     const [sourceBranchId, setSourceBranchId] = useState<number | null>(null);
+    const [isLabelDropdownOpen, setIsLabelDropdownOpen] = useState(false);
+    const [isTransferDropdownOpen, setIsTransferDropdownOpen] = useState(false);
+    const labelDropdownRef = useRef<HTMLDivElement>(null);
+    const transferDropdownRef = useRef<HTMLDivElement>(null);
     const [loading, setLoading] = useState(false);
+    const [rawInvoiceNum, setRawInvoiceNum] = useState(''); // Holds the numeric part during editing
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
     const [savedData, setSavedData] = useState<(PurchaseRecord & { products?: { name: string } })[]>([]);
@@ -130,6 +139,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
     const supplierSearchInputRef = useRef<HTMLInputElement>(null);
     const supplierDropdownRef = useRef<HTMLDivElement>(null);
     const saveButtonRef = useRef<HTMLButtonElement>(null);
+    const queryClient = useQueryClient();
 
     const handleAddItem = useCallback(() => {
         setItems(prev => [...prev, {
@@ -143,12 +153,13 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
             selectedPath: {}
         }]);
 
-        // Auto-focus the new search input
+        // Auto-focus the new search input using items.length as the index for the new row
         setTimeout(() => {
             if (searchInputRefs.current[items.length]) {
                 searchInputRefs.current[items.length]?.focus();
+                searchInputRefs.current[items.length]?.select();
             }
-        }, 100);
+        }, 150);
     }, [items.length]);
 
     const handleRemoveItem = useCallback((index: number) => {
@@ -236,75 +247,124 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
         else setBranches(data || []);
     }, []);
 
-    useEffect(() => {
-        if (isOpen) {
-            fetchProducts();
-            fetchSuppliers();
-            fetchBranches();
-            if (editData) {
-                setInvoiceNumber(editData.invoiceNumber);
-                setSupplier(editData.supplier);
-                setPurchaseType(editData.purchaseType || 'supplier');
-                setItems(editData.items.map(item => ({
-                    ...item,
-                    searchQuery: item.name || '',
-                    isSearchOpen: false
-                })));
-                setStatus(editData.status);
-                setPaymentStatus(editData.paymentStatus || 'unpaid');
-                setPaymentDate(editData.paymentDate || null);
-                setIsVatEnabled(editData.isVatEnabled);
-                setIsDiscountEnabled(editData.isDiscountEnabled);
-                setTransactionLabel(editData.transactionLabel || '');
-                setSupplierId(editData.supplierId || null);
-                setSourceBranchId(editData.sourceBranchId || null);
-                setSupplierSearchQuery(editData.supplier || '');
-                // Attempt to find supplier details if editing
-                const s = suppliers.find(sup => sup.id === editData.supplierId);
-                if (s) {
-                    setSupplierVatRegistered(s.supplier_vat_registered || false);
-                    setSupplierTin(s.supplier_tin || '');
-                }
-            } else {
-                setInvoiceNumber('PUR-' + Math.random().toString(36).substring(2, 8).toUpperCase());
-                setItems([{
-                    product_id: '',
-                    quantity: 1,
-                    unit_price: 0,
-                    total_price: 0,
-                    searchQuery: '',
-                    isSearchOpen: false,
-                    currentLevel: 'master',
-                    selectedPath: {}
-                }]);
-                setSupplier('');
-                setPurchaseType('supplier');
-                setStatus('pending');
-                setPaymentStatus('unpaid');
-                setPaymentDate(null);
-                setIsDiscountEnabled(false);
-                setSupplierId(null);
-                setSourceBranchId(null);
-                setSupplierSearchQuery('');
-                setTransactionLabel('');
-            }
-            setError(null);
-            setSuccess(false);
-            setSavedData([]);
-            resetNav();
-            document.body.classList.add('modal-open');
+    const fetchLatestPurchaseInvoice = useCallback(async () => {
+        try {
+            const { data, error: fetchError } = await supabase
+                .from('purchases')
+                .select('invoice_number')
+                .order('invoice_number', { ascending: false })
+                .limit(1);
 
-            // Auto-focus supplier search input
-            setTimeout(() => {
-                supplierSearchInputRef.current?.focus();
-            }, 100);
-        } else {
-            document.body.classList.remove('modal-open');
+            if (fetchError) throw fetchError;
+
+            if (data && data.length > 0) {
+                const lastInvoice = data[0].invoice_number;
+                const numericPart = lastInvoice.replace(/\D/g, '');
+                const nextNum = (parseInt(numericPart) || 0) + 1;
+                const paddedNum = nextNum.toString().padStart(6, '0');
+                setInvoiceNumber(paddedNum);
+                setRawInvoiceNum(paddedNum);
+            } else {
+                const defaultNum = '000001';
+                setInvoiceNumber(defaultNum);
+                setRawInvoiceNum(defaultNum);
+            }
+        } catch (err) {
+            console.error('Error fetching latest purchase invoice:', err);
+            const defaultNum = '000001';
+            setInvoiceNumber(defaultNum);
+            setRawInvoiceNum(defaultNum);
         }
+    }, []);
+
+    // Initial setup and reset logic
+    useEffect(() => {
+        if (!isOpen) {
+            document.body.classList.remove('modal-open');
+            return;
+        }
+
+        // Fetch fresh data only once when modal opens
+        fetchProducts();
+        fetchSuppliers();
+        fetchBranches();
+
+        // Only run initialization once when modal opens
+        if (editData) {
+            setInvoiceNumber(editData.invoiceNumber);
+            const numericPart = editData.invoiceNumber.replace(/\D/g, '');
+            setRawInvoiceNum(numericPart.padStart(6, '0'));
+            setSupplier(editData.supplier);
+            setPurchaseType(editData.purchaseType || 'supplier');
+            setItems(editData.items.map(item => ({
+                ...item,
+                searchQuery: item.name || '',
+                isSearchOpen: false
+            })));
+            setStatus(editData.status);
+            setPaymentStatus(editData.paymentStatus || 'unpaid');
+            setPaymentDate(editData.paymentDate || null);
+            setIsVatEnabled(editData.isVatEnabled);
+            setIsDiscountEnabled(editData.isDiscountEnabled);
+            setTransactionLabel(editData.transactionLabel || '');
+            setSupplierId(editData.supplierId || null);
+            setSourceBranchId(editData.sourceBranchId || null);
+            setSupplierSearchQuery(editData.supplier || '');
+            // Attempt to find supplier details if editing
+            const s = suppliers.find(sup => sup.id === editData.supplierId);
+            if (s) {
+                setSupplierVatRegistered(s.supplier_vat_registered || false);
+                setSupplierTin(s.supplier_tin || '');
+            }
+        } else {
+            fetchLatestPurchaseInvoice();
+            setItems([{
+                product_id: '',
+                quantity: 1,
+                unit_price: 0,
+                total_price: 0,
+                searchQuery: '',
+                isSearchOpen: false,
+                currentLevel: 'master',
+                selectedPath: {}
+            }]);
+            setSupplier('');
+            setPurchaseType('supplier');
+            setStatus('received');
+            setPaymentStatus('unpaid');
+            setPaymentDate(null);
+            setIsDiscountEnabled(false);
+            setSupplierId(null);
+            setSourceBranchId(null);
+            setSupplierSearchQuery('');
+            setTransactionLabel('');
+        }
+        setError(null);
+        setSuccess(false);
+        setSavedData([]);
+        resetNav();
+        document.body.classList.add('modal-open');
+
+        // Auto-focus Source Entity (Supplier) search
+        const focusTimer = setTimeout(() => {
+            if (supplierSearchInputRef.current) {
+                supplierSearchInputRef.current.focus();
+            }
+        }, 150);
+        
         return () => {
+            clearTimeout(focusTimer);
             document.body.classList.remove('modal-open');
         };
-    }, [isOpen, editData, fetchProducts, fetchSuppliers, fetchBranches, resetNav]);
+    }, [isOpen]); // Strict dependency on isOpen to prevent resets while typing
+
+    const stepInvoice = (dir: number) => {
+        const current = parseInt(rawInvoiceNum) || 0;
+        const next = Math.max(0, current + dir);
+        const paddedNum = next.toString().padStart(6, '0');
+        setRawInvoiceNum(paddedNum);
+        setInvoiceNumber(paddedNum);
+    };
 
     const handleItemChange = useCallback(<K extends keyof PurchaseItem>(index: number, field: K, value: PurchaseItem[K]) => {
         setItems(prev => {
@@ -371,6 +431,12 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                 supplierDropdownRef.current && !supplierDropdownRef.current.contains(event.target as Node)) {
                 setIsSupplierSearchOpen(false);
             }
+            if (isLabelDropdownOpen && labelDropdownRef.current && !labelDropdownRef.current.contains(event.target as Node)) {
+                setIsLabelDropdownOpen(false);
+            }
+            if (isTransferDropdownOpen && transferDropdownRef.current && !transferDropdownRef.current.contains(event.target as Node)) {
+                setIsTransferDropdownOpen(false);
+            }
         };
 
         if (isOpen) {
@@ -381,7 +447,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
             document.removeEventListener('keydown', handleKeyDown);
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [isOpen, items.length, handleAddItem, handleRemoveItem, isSupplierSearchOpen, purchaseType]);
+    }, [isOpen, items.length, handleAddItem, handleRemoveItem, isSupplierSearchOpen, purchaseType, isLabelDropdownOpen, isTransferDropdownOpen]);
 
     const selectProduct = (index: number, product: Product) => {
         const newItems = [...items];
@@ -398,11 +464,11 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
         };
         setItems(newItems);
 
-        // Auto-focus quantity input after selection
+        // Auto-focus Unit Cost input after selection (Following: Product -> Unit Cost -> Quantity flow)
         setTimeout(() => {
-            if (quantityInputRefs.current[index]) {
-                quantityInputRefs.current[index]?.focus();
-                quantityInputRefs.current[index]?.select();
+            if (unitCostInputRefs.current[index]) {
+                unitCostInputRefs.current[index]?.focus();
+                unitCostInputRefs.current[index]?.select();
             }
         }, 50);
     };
@@ -490,7 +556,12 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                         
                         if (supplierError) throw supplierError;
                         currentSupplierId = newSupplier.id;
-                        // Refresh suppliers list
+                        
+                        // Invalidate React Query cache so it reflects in the Suppliers page
+                        queryClient.invalidateQueries({ queryKey: queryKeys.suppliers.list(activeBranchId) });
+                        queryClient.invalidateQueries({ queryKey: queryKeys.suppliers.all });
+                        
+                        // Refresh local modal list
                         fetchSuppliers();
                     }
                 }
@@ -594,484 +665,516 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 px-4">
-            <div className="w-full max-w-6xl rounded-3xl bg-surface shadow-2xl border border-border-default overflow-hidden flex flex-col max-h-[95vh] animate-slide-up text-left">
-                <div className="flex items-center justify-between px-10 py-4 bg-brand-charcoal">
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-brand-red rounded-lg flex items-center justify-center text-white shadow-brand-red/20 shadow-lg"><Truck size={16} /></div>
-                        <h2 className="text-base font-black text-white uppercase tracking-widest">{editData ? 'Edit Purchase' : 'Create Purchase'}</h2>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 px-4 text-left">
+            <div className="w-full max-w-5xl rounded-2xl bg-surface shadow-2xl border border-border-default overflow-hidden flex flex-col max-h-[95vh] animate-slide-up">
+                <div className="flex items-center justify-between px-8 py-5 bg-brand-charcoal">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-brand-red rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-red/20"><Truck size={22} /></div>
+                        <h2 className="text-xl font-black text-white uppercase tracking-widest">{editData ? 'Edit Purchase' : 'Create Purchase'}</h2>
                     </div>
-                    <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors"><X size={18} /></button>
+                    <button onClick={onClose} className="text-white/60 hover:text-white transition-colors"><X size={22} /></button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-10 py-6 scrollbar-hide overflow-x-visible bg-surface">
-                    {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl flex items-center gap-2"><AlertCircle size={16} /> {error}</div>}
-                    <form id="purchase-form" onSubmit={handleSubmit} className="space-y-6 pb-12">
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                            <div className="md:col-span-3 p-2 bg-subtle rounded-xl border border-border-default flex flex-col gap-2 h-[68px]">
-                                <div className="flex items-center justify-between p-1 bg-surface border border-border-default rounded-lg">
-                                    <button
-                                        type="button"
-                                        onClick={() => setPurchaseType('supplier')}
-                                        className={`flex-1 py-1 rounded-md text-[9px] font-black transition-all flex items-center justify-center gap-1.5 ${purchaseType === 'supplier' ? 'bg-brand-red text-white shadow-sm' : 'text-text-muted hover:bg-subtle'}`}
-                                    >
-                                        <Store size={12} /> SUPP
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setPurchaseType('transfer')}
-                                        className={`flex-1 py-1 rounded-md text-[9px] font-black transition-all flex items-center justify-center gap-1.5 ${purchaseType === 'transfer' ? 'bg-brand-red text-white shadow-sm' : 'text-text-muted hover:bg-subtle'}`}
-                                    >
-                                        <Building2 size={12} /> TRAN
-                                    </button>
-                                </div>
-                                <div className="relative">
-                                    <div className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted">
-                                        {purchaseType === 'supplier' ? <User size={12} /> : <Building2 size={12} />}
-                                    </div>
-                                     {purchaseType === 'supplier' ? (
-                                         <>
-                                             <input
-                                                 ref={supplierSearchInputRef}
-                                                 type="text"
-                                                 required
-                                                 placeholder="Search Supplier..."
-                                                 className="w-full bg-surface border border-border-default rounded-lg pl-7 pr-6 py-1 text-[11px] focus:ring-2 focus:ring-brand-red/10 outline-none shadow-sm font-medium text-text-primary uppercase h-[24px]"
-                                                 value={supplierSearchQuery}
-                                                 onChange={(e) => {
-                                                     setSupplierSearchQuery(e.target.value);
-                                                     setSupplier(e.target.value);
-                                                     setIsSupplierSearchOpen(true);
-                                                     if (!e.target.value) setSupplierId(null);
-                                                 }}
-                                                 onFocus={() => setIsSupplierSearchOpen(true)}
-                                             />
-                                             {isSupplierSearchOpen && purchaseType === 'supplier' && (
-                                                 <div ref={supplierDropdownRef} className="absolute z-[110] left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-xl shadow-2xl max-h-[300px] overflow-y-auto animate-fade-in">
-                                                     {suppliers.filter(s => isSmartMatch(s.name, supplierSearchQuery)).map(s => (
-                                                         <button
-                                                             key={s.id}
-                                                             type="button"
-                                                             onClick={() => selectSupplier(s)}
-                                                             className="w-full text-left px-3 py-2 hover:bg-bg-subtle border-b border-border-muted last:border-0 flex flex-col gap-0.5"
-                                                         >
-                                                             <span className="text-[10px] font-black text-text-primary uppercase">{s.name}</span>
-                                                             <span className="text-[8px] text-text-secondary uppercase">VAT: {s.supplier_vat_registered ? 'YES' : 'NO'}</span>
-                                                         </button>
-                                                     ))}
-                                                     {supplierSearchQuery.trim() && !suppliers.find(s => s.name.toLowerCase() === supplierSearchQuery.trim().toLowerCase()) && (
-                                                         <button
-                                                             type="button"
-                                                             onClick={() => {
-                                                                 setIsSupplierSearchOpen(false);
-                                                                 toast.info(`New supplier "${supplierSearchQuery}" will be created on save`);
-                                                             }}
-                                                             className="w-full text-left px-3 py-3 hover:bg-brand-red-light/10 text-brand-red border-t border-brand-red/10 animate-pulse"
-                                                         >
-                                                             <div className="flex items-center gap-2">
-                                                                 <Plus size={12} />
-                                                                 <span className="text-[9px] font-black uppercase tracking-widest text-brand-red">Create New Supplier: {supplierSearchQuery.toUpperCase()}</span>
-                                                             </div>
-                                                         </button>
-                                                     )}
-                                                 </div>
-                                             )}
-                                         </>
-                                    ) : (
-                                        <select
-                                            required
-                                            className="w-full bg-surface border border-border-default rounded-lg pl-7 pr-4 py-1 text-[11px] focus:ring-2 focus:ring-brand-red/10 outline-none shadow-sm font-black text-text-primary appearance-none cursor-pointer uppercase h-[24px]"
-                                            value={sourceBranchId || ''}
-                                            onChange={(e) => {
-                                                const bId = Number(e.target.value);
-                                                setSourceBranchId(bId);
-                                                const bName = branches.find(b => b.id === bId)?.name || '';
-                                                setSupplier(bName);
-                                            }}
-                                        >
-                                            <option value="" disabled>SELECT BRANCH</option>
-                                            {branches.filter(branch => branch.id !== Number(activeBranchId)).map(branch => (<option key={branch.id} value={branch.id}>{branch.name.toUpperCase()}</option>))}
-                                        </select>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="md:col-span-2 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
-                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1 flex items-center gap-2">Ref #</label>
-                                <input type="text" required className="w-full bg-surface border border-border-default rounded-lg px-2 py-1 text-xs font-data outline-none tracking-widest text-text-primary focus:border-brand-red h-[32px]" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
-                            </div>
-
-                            <div className="md:col-span-4 p-2 bg-subtle rounded-xl border border-border-default flex gap-3 h-[68px]">
-                                <div className="flex-1 space-y-1">
-                                    <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1">Status</label>
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                        <button type="button" onClick={() => setStatus('pending')} className={`py-1 rounded-lg border text-[9px] font-black transition-all flex items-center justify-center gap-1.5 ${status === 'pending' ? 'bg-orange-500 text-white border-orange-600 shadow-sm' : 'bg-surface text-text-muted border-border-default hover:bg-subtle'}`}><Clock size={10} /> PND</button>
-                                        <button type="button" onClick={() => setStatus('received')} className={`py-1 rounded-lg border text-[9px] font-black transition-all flex items-center justify-center gap-1.5 ${status === 'received' ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm' : 'bg-surface text-text-muted border-border-default hover:bg-subtle'}`}><ShieldCheck size={10} /> REC</button>
-                                    </div>
-                                </div>
-                                <div className="flex-1 space-y-1">
-                                    <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1">Payment</label>
-                                    <div className="grid grid-cols-3 gap-1">
-                                        <button type="button" onClick={() => setPaymentStatus('unpaid')} className={`py-1 rounded-lg border text-[8px] font-black transition-all ${paymentStatus === 'unpaid' ? 'bg-red-500 text-white border-red-600 shadow-sm' : 'bg-surface text-text-muted border-border-default hover:bg-subtle'}`}>UN</button>
-                                        <button type="button" onClick={() => setPaymentStatus('partial')} className={`py-1 rounded-lg border text-[8px] font-black transition-all ${paymentStatus === 'partial' ? 'bg-amber-500 text-white border-amber-600 shadow-sm' : 'bg-surface text-text-muted border-border-default hover:bg-subtle'}`}>PRT</button>
-                                        <button type="button" onClick={() => setPaymentStatus('paid')} className={`py-1 rounded-lg border text-[8px] font-black transition-all ${paymentStatus === 'paid' ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-surface text-text-muted border-border-default hover:bg-subtle'}`}>FUL</button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="md:col-span-3 p-2 bg-subtle rounded-xl border border-border-default h-[68px]">
-                                <label className="block text-[10px] font-black text-text-secondary uppercase tracking-widest mb-1 flex items-center gap-2"><Tag size={12} /> Label</label>
-                                <select 
-                                    className="w-full bg-surface border border-border-default rounded-xl px-2 py-1 text-[11px] font-black text-text-primary outline-none focus:ring-2 focus:ring-brand-red/10 appearance-none cursor-pointer uppercase h-[32px]"
-                                    value={transactionLabel}
-                                    onChange={(e) => setTransactionLabel(e.target.value)}
-                                >
-                                    <option value="">NO LABEL</option>
-                                    {PURCHASE_LABELS.map(label => (<option key={label.id} value={label.id}>{label.label}</option>))}
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="space-y-6">
-                            <div className="flex justify-between items-center border-b border-border-default pb-4">
-                                <div className="flex items-center gap-4">
-                                    <h3 className="text-xs font-black uppercase text-text-primary tracking-widest">Stock Items</h3>
-                                    {lowStockProducts.length > 0 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowLowStock(!showLowStock)}
-                                            className={`text-[9px] font-black px-2 py-1 rounded-lg transition-all flex items-center gap-1.5 ${showLowStock ? 'bg-brand-red text-white' : 'bg-brand-red/10 text-brand-red border border-brand-red/20'}`}
-                                        >
-                                            <AlertCircle size={12} />
-                                            {showLowStock ? 'HIDE LOW STOCK' : `${lowStockProducts.length} LOW STOCK ITEMS`}
-                                        </button>
-                                    )}
-                                </div>
-                                <button type="button" onClick={handleAddItem} className="bg-brand-red-light/10 text-brand-red px-4 py-2 rounded-xl text-[10px] font-black hover:bg-brand-red hover:text-white transition-all border border-brand-red/20 shadow-sm">
-                                    <Plus size={14} className="inline mr-1" /> ADD ITEM
-                                </button>
-                            </div>
-
-                            {supplierVatRegistered && (
-                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center text-white"><ShieldCheck size={16} /></div>
-                                        <div>
-                                            <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">VAT Registered Supplier</p>
-                                            <p className="text-[9px] font-bold text-emerald-500/80">Input VAT will be auto-calculated for BIR compliance.</p>
+                <div className="flex-1 overflow-y-auto p-4 scrollbar-hide bg-surface">
+                    {error && <div className="mb-4 p-3 bg-danger-subtle border border-danger text-danger text-sm rounded-xl flex items-center gap-2"><AlertCircle size={16} /> {error}</div>}
+                    <form 
+                        id="purchase-form" 
+                        onSubmit={handleSubmit} 
+                        className="flex-1 flex flex-col overflow-hidden"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.ctrlKey) {
+                                // Prevent saving on Enter (User Request: only ctrl+enter command will save)
+                                e.preventDefault();
+                            }
+                        }}
+                    >
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-2 h-[730px]">
+                            {/* Column 1: Items List (Left, 8/12) */}
+                            <div className="md:col-span-8 flex flex-col h-full bg-subtle p-1.5 rounded-xl border border-border-default shadow-sm overflow-hidden gap-1.5">
+                                {/* Compact Header */}
+                                <div className="flex items-center justify-between gap-1.5 px-0.5">
+                                    <div className="flex items-center gap-1.5 focus-within:ring-1 focus-within:ring-brand-red/10 rounded-lg transition-all px-0.5">
+                                        <div className="px-1.5 py-0.5 bg-brand-red text-white text-[12px] font-black rounded uppercase tracking-tighter shadow-sm flex items-center justify-center h-[28px] min-w-[70px]">REFERENCE</div>
+                                        <div className="relative group">
+                                            <input 
+                                                type="text"
+                                                className="px-1.5 py-0.5 bg-surface border border-border-default text-[13px] font-data font-black text-text-primary rounded h-[28px] flex items-center justify-center min-w-[120px] outline-none focus:border-brand-red text-center uppercase transition-all"
+                                                value={invoiceNumber}
+                                                onChange={(e) => {
+                                                    setInvoiceNumber(e.target.value);
+                                                    setRawInvoiceNum(e.target.value.replace(/\D/g, ''));
+                                                }}
+                                                onFocus={(e) => e.target.select()}
+                                            />
+                                        </div>
+                                        {/* Arrows (Fixed for UI Consistency) */}
+                                        <div className="flex bg-surface border border-border-default rounded h-[28px] overflow-hidden">
+                                            <button type="button" onClick={() => stepInvoice(1)} className="px-1 hover:bg-subtle text-text-muted transition-colors border-r border-border-default"><ChevronDown size={15} className="rotate-180" /></button>
+                                            <button type="button" onClick={() => stepInvoice(-1)} className="px-1 hover:bg-subtle text-text-muted transition-colors"><ChevronDown size={15} /></button>
                                         </div>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-[9px] font-black text-text-muted uppercase tracking-widest">Est. Input VAT</p>
-                                        <p className="text-sm font-black text-emerald-500 font-data">₱{inputVatAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                                    </div>
+                                    <button type="button" onClick={handleAddItem} className="text-brand-red text-[11px] font-black hover:bg-brand-red-light/10 px-2 py-1 rounded transition-all uppercase flex items-center gap-1">
+                                        <Plus size={14} /> ADD ITEM
+                                    </button>
                                 </div>
-                            )}
-
-                            {showLowStock && lowStockProducts.length > 0 && (
-                                <div className="p-4 bg-brand-red/5 border border-brand-red/20 rounded-2xl animate-fade-in">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <AlertCircle className="text-brand-red" size={14} />
-                                        <h4 className="text-[10px] font-black text-text-primary uppercase tracking-widest">Low Stock Alert</h4>
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        {lowStockProducts.map(p => (
-                                            <button
-                                                key={p.id}
-                                                type="button"
-                                                onClick={() => quickAddProduct(p)}
-                                                className="flex items-center gap-3 px-3 py-2 bg-surface border border-border-default rounded-xl hover:border-brand-red transition-all group shadow-sm"
-                                            >
-                                                <div className="text-left">
-                                                    <p className="text-[10px] font-black text-text-primary leading-none mb-1 uppercase">{p.name}</p>
+                                
+                                <div className="flex-1 overflow-y-auto scrollbar-hide">
+                                    <div 
+                                        className="space-y-3 outline-none p-1" 
+                                        tabIndex={focusedIndex >= 0 ? 0 : -1} 
+                                        onKeyDown={focusedIndex >= 0 ? handleListKeyDown : undefined}
+                                    >
+                                        {lowStockProducts.length > 0 && (
+                                            <div className="mb-2 px-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowLowStock(!showLowStock)}
+                                                    className={`w-full text-[10px] font-black px-3 py-2 rounded-xl transition-all flex items-center justify-between ${showLowStock ? 'bg-brand-red text-white shadow-lg' : 'bg-brand-red/10 text-brand-red border border-brand-red/20 hover:bg-brand-red/20'}`}
+                                                >
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-[9px] font-black text-brand-red font-data">STK: {p.stock_available}</span>
+                                                        <AlertCircle size={14} />
+                                                        <span>{lowStockProducts.length} LOW STOCK ITEMS DETECTED</span>
                                                     </div>
-                                                </div>
-                                                <div className="w-6 h-6 rounded-lg bg-brand-red/10 text-brand-red flex items-center justify-center group-hover:bg-brand-red group-hover:text-white transition-colors">
-                                                    <Plus size={14} />
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            <div 
-                                className="space-y-5 outline-none" 
-                                tabIndex={focusedIndex >= 0 ? 0 : -1} 
-                                onKeyDown={focusedIndex >= 0 ? handleListKeyDown : undefined}
-                            >
-                                {items.map((item, index) => (
-                                    <div key={index} className={`flex flex-col lg:flex-row gap-5 p-5 rounded-2xl shadow-sm transition-all group/item overflow-visible relative ${item.product_id && focusedIndex === completedItems.indexOf(item) ? 'bg-blue-50 border-2 border-brand-red/30' : 'bg-subtle border border-border-default hover:border-brand-red/30'}`}>
-                                        {/* Keyboard shortcut indicators */}
-                                        {item.product_id && focusedIndex === completedItems.indexOf(item) && (
-                                            <div className="absolute -top-3 left-4 flex gap-2 animate-bounce-subtle z-10">
-                                                <span className="bg-brand-red text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1">
-                                                    <kbd className="bg-white/20 px-1 rounded">Q</kbd> QTY
-                                                </span>
-                                                <span className="bg-brand-red text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1">
-                                                    <kbd className="bg-white/20 px-1 rounded">R</kbd> REPLACE
-                                                </span>
-                                                <span className="bg-brand-red text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1">
-                                                    <kbd className="bg-white/20 px-1 rounded">DEL</kbd> REMOVE
-                                                </span>
-                                                {deleteConfirmIndex === focusedIndex && (
-                                                    <span className="bg-brand-charcoal text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg animate-pulse">
-                                                        PRESS AGAIN TO REMOVE
-                                                    </span>
+                                                    <ChevronDown size={14} className={`transition-transform ${showLowStock ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                
+                                                {showLowStock && (
+                                                    <div className="mt-2 grid grid-cols-2 gap-2 animate-fade-in">
+                                                        {lowStockProducts.map(p => (
+                                                            <button
+                                                                key={p.id}
+                                                                type="button"
+                                                                onClick={() => quickAddProduct(p)}
+                                                                className="flex items-center gap-2 px-3 py-2 bg-surface border border-border-default rounded-xl hover:border-brand-red transition-all group shadow-sm text-left"
+                                                            >
+                                                                <div className="flex-1">
+                                                                    <p className="text-[9px] font-black text-text-primary uppercase leading-none mb-1">{p.name}</p>
+                                                                    <p className="text-[8px] font-black text-brand-red font-data">STK: {p.stock_available}</p>
+                                                                </div>
+                                                                <Plus size={12} className="text-brand-red group-hover:scale-125 transition-transform" />
+                                                            </button>
+                                                        ))}
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
-                                        <div className="flex-[4] relative" ref={el => { dropdownRefs.current[index] = el; }}>
-                                            <label className="block text-[9px] font-black text-text-secondary mb-1.5 uppercase tracking-widest">Product</label>
-                                            <div className="relative">
-                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"><Search size={14} /></div>
-                                                <input
-                                                    ref={el => { searchInputRefs.current[index] = el; }}
-                                                    type="text"
-                                                    placeholder="Focus to search product..."
-                                                    className="w-full bg-surface border border-border-default rounded-xl pl-9 pr-8 py-2.5 text-xs font-bold text-text-primary focus:ring-2 focus:ring-brand-red/10 focus:border-brand-red/30 outline-none"
-                                                    value={item.searchQuery}
-                                                    onChange={(e) => handleItemChange(index, 'searchQuery', e.target.value)}
-                                                    onFocus={(e) => {
-                                                        e.target.select();
-                                                        handleItemChange(index, 'isSearchOpen', true);
-                                                    }}
-                                                    onKeyDown={(e) => {
-                                                        const query = item.searchQuery || '';
-                                                        const filtered = products.filter(p => isSmartMatch(p.name, query));
 
-                                                        if (e.key === 'ArrowDown') {
-                                                            e.preventDefault();
-                                                            if (item.isSearchOpen) {
-                                                                handleItemChange(index, 'highlightedIndex', Math.min((item.highlightedIndex || 0) + 1, filtered.length - 1));
-                                                            } else {
-                                                                handleItemChange(index, 'isSearchOpen', true);
-                                                            }
-                                                        } else if (e.key === 'ArrowUp') {
-                                                            e.preventDefault();
-                                                            handleItemChange(index, 'highlightedIndex', Math.max((item.highlightedIndex || 0) - 1, 0));
-                                                        } else if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            if (item.isSearchOpen && filtered[item.highlightedIndex || 0]) {
-                                                                selectProduct(index, filtered[item.highlightedIndex || 0]);
-                                                            } else if (!item.searchQuery && completedItems.length > 0) {
-                                                                saveButtonRef.current?.focus();
-                                                            }
-                                                        } else if (e.key === 'Escape') {
-                                                            if (item.isSearchOpen) {
-                                                                handleItemChange(index, 'isSearchOpen', false);
-                                                            }
-                                                        }
-                                                    }}
-                                                />
-                                                {item.searchQuery && (
-                                                    <button type="button" onClick={() => { const ni = [...items]; ni[index] = { ...ni[index], searchQuery: '', product_id: '', name: '', stock_available: 0, unit_price: 0, total_price: 0, currentLevel: 'master', selectedPath: {}, isSearchOpen: false }; setItems(ni); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-brand-red transition-colors">
-                                                        <X size={14} />
-                                                    </button>
-                                                )}
-                                            </div>
-
-                                            {item.isSearchOpen && (
-                                                <div className="absolute z-[100] left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-xl shadow-2xl max-h-[350px] overflow-hidden flex flex-col min-w-[400px] animate-fade-in">
-                                                    {/* Back to Master Categories */}
-                                                    {!item.searchQuery && item.currentLevel !== 'master' && (
-                                                        <div className="px-4 py-2 bg-subtle border-b border-border-default flex items-center gap-2">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleItemChange(index, 'currentLevel', 'master')}
-                                                                className="flex items-center gap-1.5 text-[10px] font-black uppercase text-brand-red hover:text-brand-red-dark transition-colors"
-                                                            >
-                                                                <ChevronDown size={14} className="rotate-90" />
-                                                                Back
-                                                            </button>
-                                                            <span className="text-[10px] font-black text-text-muted uppercase tracking-widest">
-                                                                {item.selectedPath?.master}
+                                        {items.map((item, index) => (
+                                            <div key={index} className={`flex flex-col gap-3 p-4 rounded-xl transition-all group/item overflow-visible relative ${item.product_id && focusedIndex === completedItems.indexOf(item) ? 'bg-brand-red/5 border-2 border-brand-red/30' : 'bg-surface border border-border-default hover:border-brand-red/20'}`}>
+                                                {/* Keyboard shortcut indicators */}
+                                                {item.product_id && focusedIndex === completedItems.indexOf(item) && (
+                                                    <div className="absolute -top-3 left-4 flex gap-2 animate-bounce-subtle z-10">
+                                                        <span className="bg-brand-red text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1">
+                                                            <kbd className="bg-white/20 px-1 rounded">Q</kbd> QTY
+                                                        </span>
+                                                        <span className="bg-brand-red text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1">
+                                                            <kbd className="bg-white/20 px-1 rounded">R</kbd> REPLACE
+                                                        </span>
+                                                        <span className="bg-brand-red text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1">
+                                                            <kbd className="bg-white/20 px-1 rounded">DEL</kbd> REMOVE
+                                                        </span>
+                                                        {deleteConfirmIndex === focusedIndex && (
+                                                            <span className="bg-brand-charcoal text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-lg animate-pulse">
+                                                                PRESS AGAIN TO REMOVE
                                                             </span>
-                                                        </div>
-                                                    )}
-
-                                                    <div className="flex-1 overflow-y-auto overflow-x-hidden">
-                                                        {item.searchQuery ? (
-                                                            // Global Search Mode
-                                                            products.filter(p =>
-                                                                isSmartMatch(p.name, item.searchQuery || '')
-                                                            ).length > 0 ? (
-                                                                products.filter(p =>
-                                                                    isSmartMatch(p.name, item.searchQuery || '')
-                                                                ).map(p => (
-                                                                    <button
-                                                                        key={p.id}
-                                                                        type="button"
-                                                                        onClick={() => selectProduct(index, p)}
-                                                                        className="w-full text-left px-3 py-2 hover:bg-bg-subtle border-b border-border-muted last:border-0 flex flex-col gap-0.5"
-                                                                    >
-                                                                        <div className="flex items-center justify-between">
-                                                                            <span className="text-[10px] font-black text-text-primary uppercase">{p.name}</span>
-                                                                        </div>
-                                                                        <div className="flex items-center justify-between text-[9px]">
-                                                                            <span className="text-text-secondary font-medium font-data">STK: <span className={p.stock_available <= 5 ? 'text-brand-red font-bold' : 'text-emerald-500'}>{p.stock_available}</span></span>
-                                                                        </div>
-                                                                    </button>
-                                                                ))
-                                                            ) : (
-                                                                <div className="p-8 text-center bg-subtle rounded-xl">
-                                                                    <div className="w-10 h-10 bg-base rounded-full flex items-center justify-center text-text-muted mx-auto mb-2"><Search size={16} /></div>
-                                                                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">No products found</p>
-                                                                </div>
-                                                            )
-                                                        ) : item.currentLevel === 'master' ? (
-                                                            // Level 1: Master Categories
-                                                            Array.from(new Set(products.map(p => p.name.split(' > ')[0]))).sort().map(m => (
-                                                                <button
-                                                                    key={m}
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        const newItems = [...items];
-                                                                        newItems[index].selectedPath = { master: m };
-                                                                        newItems[index].currentLevel = 'product';
-                                                                        setItems(newItems);
-                                                                    }}
-                                                                    className="w-full text-left px-3 py-2.5 hover:bg-brand-red/10 border-b border-border-muted last:border-0 flex items-center justify-between group"
-                                                                >
-                                                                    <span className="text-[10px] font-black text-text-primary uppercase tracking-wider">{m}</span>
-                                                                    <ChevronDown size={12} className="-rotate-90 text-text-muted group-hover:text-brand-red transition-colors" />
-                                                                </button>
-                                                            ))
-                                                        ) : (
-                                                            // Level 2: All products under selected master
-                                                            products
-                                                                .filter(p => p.name.split(' > ')[0] === item.selectedPath?.master)
-                                                                .map(p => (
-                                                                    <button
-                                                                        key={p.id}
-                                                                        type="button"
-                                                                        onClick={() => selectProduct(index, p)}
-                                                                        className="w-full text-left px-3 py-2 hover:bg-bg-subtle border-b border-border-muted last:border-0 flex flex-col gap-0.5"
-                                                                    >
-                                                                        <div className="flex items-center justify-between">
-                                                                            <span className="text-[10px] font-black text-text-primary uppercase">
-                                                                                {p.name.split(' > ').slice(1).join(' > ')}
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="flex items-center justify-between text-[9px]">
-                                                                            <span className="text-text-secondary font-medium font-data">STK: <span className={p.stock_available <= 5 ? 'text-brand-red font-bold' : 'text-emerald-500'}>{p.stock_available}</span></span>
-                                                                        </div>
-                                                                    </button>
-                                                                ))
                                                         )}
                                                     </div>
+                                                )}
+                                                
+                                                <div className="flex flex-col lg:flex-row gap-4">
+                                                    <div className="flex-[4] relative" ref={el => { dropdownRefs.current[index] = el; }}>
+                                                        <label className="block text-[10px] font-black text-text-secondary mb-1.5 uppercase tracking-widest">Product</label>
+                                                        <div className="relative">
+                                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"><Search size={14} /></div>
+                                                            <input
+                                                                ref={el => { searchInputRefs.current[index] = el; }}
+                                                                type="text"
+                                                                placeholder="Search Product..."
+                                                                className="w-full bg-surface border border-border-default rounded-xl pl-9 pr-10 py-2 text-[13px] font-bold text-text-primary focus:ring-2 focus:ring-brand-red/10 focus:border-brand-red/30 outline-none h-[40px] uppercase"
+                                                                value={item.searchQuery}
+                                                                onChange={(e) => handleItemChange(index, 'searchQuery', e.target.value)}
+                                                                onFocus={(e) => {
+                                                                    e.target.select();
+                                                                    handleItemChange(index, 'isSearchOpen', true);
+                                                                }}
+                                                                onKeyDown={(e) => {
+                                                                    const filtered = products.filter(p => isSmartMatch(p.name, item.searchQuery || '')).slice(0, 20);
+                                                                    
+                                                                    if (e.key === 'Tab' && item.isSearchOpen && filtered.length > 0) {
+                                                                        e.preventDefault();
+                                                                        if (e.shiftKey) {
+                                                                            // Shift+Tab = move highlight UP
+                                                                            const nextIdx = ((item.highlightedIndex || 0) - 1 + filtered.length) % filtered.length;
+                                                                            handleItemChange(index, 'highlightedIndex', nextIdx);
+                                                                        } else {
+                                                                            // Tab = move highlight DOWN
+                                                                            const nextIdx = ((item.highlightedIndex || 0) + 1) % filtered.length;
+                                                                            handleItemChange(index, 'highlightedIndex', nextIdx);
+                                                                        }
+                                                                    } else if (e.key === 'Enter' && item.isSearchOpen && filtered.length > 0) {
+                                                                        // Enter = select the highlighted product
+                                                                        e.preventDefault();
+                                                                        const selectedIdx = item.highlightedIndex !== undefined ? item.highlightedIndex : 0;
+                                                                        if (filtered[selectedIdx]) {
+                                                                            selectProduct(index, filtered[selectedIdx]);
+                                                                        }
+                                                                    } else if (e.key === 'Enter') {
+                                                                        // Enter with no dropdown = advance to Unit Cost
+                                                                        e.preventDefault();
+                                                                        unitCostInputRefs.current[index]?.focus();
+                                                                    } else if (e.key === 'Escape') {
+                                                                        handleItemChange(index, 'isSearchOpen', false);
+                                                                    }
+                                                                }}
+                                                            />
+                                                            {item.product_id && (
+                                                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                                    <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white"><ShieldCheck size={12} /></div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {item.isSearchOpen && (
+                                                            <div className="absolute z-[100] left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-xl shadow-2xl max-h-[350px] overflow-hidden flex flex-col min-w-[400px] animate-fade-in">
+                                                                <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                                                                    {(() => {
+                                                                        const filtered = products.filter(p => isSmartMatch(p.name, item.searchQuery || '')).slice(0, 20);
+                                                                        if (filtered.length === 0) {
+                                                                            return (
+                                                                                <div className="p-8 text-center bg-subtle">
+                                                                                    <p className="text-[10px] font-bold text-text-muted uppercase">No products found</p>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        return filtered.map((p, pIdx) => {
+                                                                            const parts = p.name.includes(' > ') ? p.name.split(' > ') : [p.name];
+                                                                            const name = parts[parts.length - 1];
+                                                                            const path = parts.slice(0, -1).join(' > ') + (parts.length > 1 ? ' >' : '');
+                                                                            
+                                                                            return (
+                                                                                <button
+                                                                                    key={p.id}
+                                                                                    type="button"
+                                                                                    ref={(el) => {
+                                                                                        if (item.highlightedIndex === pIdx && el) {
+                                                                                            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                                                                                        }
+                                                                                    }}
+                                                                                    onClick={() => selectProduct(index, p)}
+                                                                                    className={`w-full text-left px-4 py-3 border-b border-border-default transition-all flex items-start justify-between group h-auto ${item.highlightedIndex === pIdx ? 'bg-brand-red/10 ring-2 ring-inset ring-black' : 'hover:bg-brand-red/5'}`}
+                                                                                >
+                                                                                    <div className="flex-1 min-w-0 pr-4">
+                                                                                        {path && <div className="text-[11px] font-black uppercase text-text-primary mb-0.5 leading-tight opacity-50 tracking-tight">{path}</div>}
+                                                                                        <div className="text-[14px] font-black uppercase text-text-primary leading-tight break-words group-hover:text-brand-red transition-colors">
+                                                                                            {name}
+                                                                                        </div>
+                                                                                        <div className="text-[10px] font-bold text-text-muted font-mono uppercase tracking-widest mt-1">STK: <span className="text-[11px] font-black text-teal-600">{p.stock_available} {p.unit || 'pcs'}</span></div>
+                                                                                    </div>
+                                                                                    <div className="shrink-0 pt-0.5">
+                                                                                        <div className="text-[18px] font-data font-black text-brand-red leading-none">₱{p.buying_price?.toLocaleString()}</div>
+                                                                                    </div>
+                                                                                </button>
+                                                                            );
+                                                                        });
+                                                                    })()}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="grid grid-cols-3 flex-[4.5] gap-3">
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-text-secondary mb-1.5 uppercase tracking-widest">Unit Cost</label>
+                                                            <div className="relative">
+                                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[10px]">₱</span>
+                                                                <input
+                                                                    ref={el => { unitCostInputRefs.current[index] = el; }}
+                                                                    type="number"
+                                                                    className="w-full bg-surface border border-border-default rounded-lg pl-5 pr-2 py-2 text-[13px] font-data font-black focus:border-brand-red outline-none text-text-primary h-[40px]"
+                                                                    value={item.unit_price}
+                                                                    onChange={(e) => handleItemChange(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                                                                    onFocus={(e) => e.target.select()}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') {
+                                                                            e.preventDefault();
+                                                                            quantityInputRefs.current[index]?.focus();
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="block text-[10px] font-black text-text-secondary mb-1.5 uppercase tracking-widest">Qty</label>
+                                                            <input
+                                                                ref={el => { quantityInputRefs.current[index] = el; }}
+                                                                type="number"
+                                                                className="w-full bg-surface border border-border-default rounded-lg px-2 py-2 text-[13px] font-data font-black focus:border-brand-red outline-none text-text-primary h-[40px]"
+                                                                value={item.quantity}
+                                                                onChange={(e) => handleItemChange(index, 'quantity', parseFloat(e.target.value) || 0)}
+                                                                onFocus={(e) => e.target.select()}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter') {
+                                                                        e.preventDefault();
+                                                                        if (index === items.length - 1) {
+                                                                            handleAddItem();
+                                                                            // Focus will be handled by the effect of items length changing
+                                                                        } else {
+                                                                            searchInputRefs.current[index + 1]?.focus();
+                                                                        }
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </div>
+
+                                                        <div className="text-right">
+                                                            <label className="block text-[10px] font-black text-text-secondary mb-1.5 uppercase tracking-widest">Total</label>
+                                                            <div className="py-2.5 font-black text-[15px] text-text-primary font-data lining-nums">₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-end pb-1.5">
+                                                        <button type="button" onClick={() => handleRemoveItem(index)} disabled={items.length === 1} className="p-2 text-text-muted hover:text-brand-red hover:bg-brand-red/5 rounded-lg transition-all disabled:opacity-0"><Trash2 size={18} /></button>
+                                                    </div>
                                                 </div>
-                                            )}
-                                        </div>
-                                        <div className="flex-[2]">
-                                            <label className="block text-[9px] font-black text-text-secondary mb-1.5 uppercase tracking-widest">Unit Cost</label>
-                                            <div className="relative">
-                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[10px]">₱</span>
-                                                <input
-                                                    ref={el => { unitCostInputRefs.current[index] = el; }}
-                                                    type="number"
-                                                    step="0.01"
-                                                    className={`w-full bg-bg-surface border ${item.unit_price > (products.find(p => p.id === item.product_id)?.buying_price || 0) * 1.5 ? 'border-amber-400' : 'border-border-default'} rounded-lg pl-5 pr-2 py-1.5 text-xs font-data focus:border-brand-red focus:ring-2 focus:ring-brand-red/10 outline-none text-text-primary shadow-inner h-[32px]`}
-                                                    value={item.unit_price}
-                                                    onChange={(e) => handleItemChange(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                                                    onFocus={(e) => e.target.select()}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            if (index === items.length - 1) {
-                                                                handleAddItem();
-                                                            } else {
-                                                                searchInputRefs.current[index + 1]?.focus();
-                                                            }
-                                                        } else if (e.key === 'Escape') {
-                                                            quantityInputRefs.current[index]?.focus();
-                                                        }
-                                                    }}
-                                                />
                                             </div>
-                                            {item.unit_price > (products.find(p => p.id === item.product_id)?.buying_price || 0) * 2 && (
-                                                <p className="text-[8px] font-black text-amber-500 uppercase mt-1 flex items-center gap-1"><AlertCircle size={8} /> High Cost Alert</p>
-                                            )}
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Column 2: Sidebar (Right, 4/12) */}
+                            <div className="md:col-span-4 flex flex-col gap-2.5 h-full">
+                                {/* Supplier Card */}
+                                <div 
+                                    className="bg-subtle/50 p-2.5 rounded-xl border border-border-default shadow-sm group"
+                                    onMouseEnter={() => purchaseType === 'supplier' && setIsSupplierSearchOpen(true)}
+                                    onMouseLeave={() => setIsSupplierSearchOpen(false)}
+                                >
+                                    <div className="flex items-center gap-2 mb-2 px-1">
+                                        <div className="p-1.5 bg-brand-red/10 rounded-lg text-brand-red group-hover:bg-brand-red group-hover:text-white transition-all"><Truck size={14} /></div>
+                                        <h3 className="text-[10px] font-black uppercase text-text-primary tracking-widest">Source Entity</h3>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="flex p-1 bg-surface border border-border-default rounded-lg overflow-hidden h-[34px]">
+                                            <button type="button" onClick={() => setPurchaseType('supplier')} className={`flex-1 text-[9px] font-black rounded-md transition-all ${purchaseType === 'supplier' ? 'bg-brand-red text-white' : 'text-text-muted hover:bg-subtle'}`}>SUPPLIER</button>
+                                            <button type="button" onClick={() => setPurchaseType('transfer')} className={`flex-1 text-[9px] font-black rounded-md transition-all ${purchaseType === 'transfer' ? 'bg-brand-red text-white' : 'text-text-muted hover:bg-subtle'}`}>TRANSFER</button>
                                         </div>
-                                        <div className="flex-[1.5]">
-                                            <label className="block text-[9px] font-black text-text-secondary mb-1.5 uppercase tracking-widest">Qty</label>
-                                            <input
-                                                ref={el => { quantityInputRefs.current[index] = el; }}
-                                                type="number"
-                                                step={item.unit?.toLowerCase() === 'elf' || item.name?.toLowerCase()?.includes('elf') ? '0.25' : '1'}
-                                                min="0"
-                                                className="w-full bg-bg-surface border border-border-default rounded-lg px-2 py-1.5 text-xs font-data focus:border-brand-red focus:ring-2 focus:ring-brand-red/10 outline-none text-text-primary shadow-inner h-[32px]"
-                                                value={item.quantity}
-                                                onChange={(e) => handleItemChange(index, 'quantity', parseFloat(e.target.value) || 0)}
-                                                onFocus={(e) => e.target.select()}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        unitCostInputRefs.current[index]?.focus();
-                                                        unitCostInputRefs.current[index]?.select();
-                                                    } else if (e.key === 'Escape') {
-                                                        searchInputRefs.current[index]?.focus();
-                                                    }
-                                                }}
-                                            />
-                                            {item.name?.toLowerCase().includes('elf') && (
-                                                <div className="mt-1.5 p-1.5 bg-brand-red/5 border border-brand-red/10 rounded-lg animate-fade-in group/calc relative">
-                                                    <div className="flex items-center justify-between gap-1">
-                                                        <span className="text-[8px] font-black text-brand-red uppercase tracking-widest leading-none">Cubic Calc</span>
-                                                        <input 
-                                                            type="number" 
-                                                            placeholder="m³"
-                                                            className="w-12 bg-surface border border-border-default rounded px-1 py-0.5 text-[9px] font-data outline-none focus:border-brand-red h-[16px]"
-                                                            onChange={(e) => {
-                                                                const m3 = parseFloat(e.target.value);
-                                                                if (!isNaN(m3)) {
-                                                                    const elf = m3 / 1.6;
-                                                                    const rounded = Math.floor(elf / 0.25) * 0.25;
-                                                                    handleItemChange(index, 'quantity', rounded);
-                                                                }
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    <div className="absolute bottom-full left-0 mb-1 opacity-0 group-hover/calc:opacity-100 transition-opacity bg-brand-charcoal text-white text-[8px] p-2 rounded-lg shadow-xl z-20 w-32 pointer-events-none border border-white/10">
-                                                        <p className="font-bold mb-1 uppercase tracking-widest text-brand-red">Formula:</p>
-                                                        <p className="opacity-80">ELF = m³ / 1.6</p>
-                                                        <p className="opacity-80">Rnd: Down to 0.25</p>
-                                                    </div>
+                                        <div className="relative">
+                                            {purchaseType === 'supplier' ? (
+                                                <div className="relative">
+                                                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"><Search size={12} /></div>
+                                                    <input
+                                                        ref={supplierSearchInputRef}
+                                                        type="text"
+                                                        placeholder="SEARCH SUPPLIER..."
+                                                        className="w-full bg-surface border border-border-default rounded-lg pl-8 pr-3 py-2 text-[11px] font-black text-text-primary outline-none focus:border-brand-red h-[36px] uppercase"
+                                                        value={supplierSearchQuery}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            setSupplierSearchQuery(val);
+                                                            setSupplier(val);
+                                                            setIsSupplierSearchOpen(true);
+                                                            // Logic to clear ID only if not an exact match to allow auto-creation
+                                                            const match = suppliers.find(s => s.name.toLowerCase() === val.toLowerCase());
+                                                            if (match) {
+                                                                setSupplierId(match.id);
+                                                            } else {
+                                                                setSupplierId(null);
+                                                            }
+                                                        }}
+                                                        onFocus={() => setIsSupplierSearchOpen(true)}
+                                                        onKeyDown={(e) => {
+                                                            const filtered = suppliers.filter(s => isSmartMatch(s.name, supplierSearchQuery));
+                                                            
+                                                            if (e.key === 'ArrowDown' && isSupplierSearchOpen) {
+                                                                e.preventDefault();
+                                                                // If I add highlightedIndex to modal state, I can navigate here too.
+                                                            } else if ((e.key === 'Enter' || e.key === 'Tab') && isSupplierSearchOpen && filtered.length > 0) {
+                                                                e.preventDefault();
+                                                                selectSupplier(filtered[0]);
+                                                                searchInputRefs.current[0]?.focus();
+                                                            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                                                                e.preventDefault();
+                                                                searchInputRefs.current[0]?.focus();
+                                                            }
+                                                        }}
+                                                    />
+                                                    {isSupplierSearchOpen && (
+                                                        <div ref={supplierDropdownRef} className="absolute z-[110] left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-xl shadow-2xl max-h-[250px] overflow-y-auto animate-fade-in">
+                                                            {suppliers.filter(s => isSmartMatch(s.name, supplierSearchQuery)).map(s => (
+                                                                <button key={s.id} type="button" onClick={() => selectSupplier(s)} className="w-full text-left px-3 py-2 hover:bg-subtle border-b border-border-muted last:border-0 flex flex-col">
+                                                                    <span className="text-[10px] font-black text-text-primary uppercase">{s.name}</span>
+                                                                    <span className="text-[8px] text-text-secondary uppercase tracking-tighter">VAT: {s.supplier_vat_registered ? 'YES' : 'NO'}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div 
+                                                    className="relative"
+                                                    onMouseEnter={() => setIsTransferDropdownOpen(true)}
+                                                    onMouseLeave={() => setIsTransferDropdownOpen(false)}
+                                                >
+                                                    <button 
+                                                        type="button"
+                                                        className="w-full bg-surface border border-border-default rounded-lg px-3 py-2 text-[11px] font-black text-text-primary outline-none focus:border-brand-red h-[36px] uppercase flex items-center justify-between"
+                                                    >
+                                                        <span>{branches.find(b => b.id === sourceBranchId)?.name.toUpperCase() || 'SELECT SOURCE'}</span>
+                                                        <ChevronDown size={14} className={`transition-transform ${isTransferDropdownOpen ? 'rotate-180' : ''}`} />
+                                                    </button>
+                                                    {isTransferDropdownOpen && (
+                                                        <div 
+                                                            ref={transferDropdownRef}
+                                                            className="absolute z-[110] left-0 right-0 top-full mt-1 bg-surface border border-border-default rounded-xl shadow-2xl overflow-hidden animate-fade-in"
+                                                        >
+                                                            {branches.filter(b => b.id !== Number(activeBranchId)).map(b => (
+                                                                <button
+                                                                    key={b.id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setSourceBranchId(b.id);
+                                                                        setSupplier(b.name);
+                                                                        setIsTransferDropdownOpen(false);
+                                                                    }}
+                                                                    className="w-full text-left px-4 py-2.5 hover:bg-subtle text-[11px] font-black uppercase border-b border-border-default last:border-0 transition-colors"
+                                                                >
+                                                                    {b.name}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
-                                        </div>
-                                        <div className="flex-[2.5] text-right min-w-[100px]">
-                                            <label className="block text-[9px] font-black text-text-secondary mb-1.5 uppercase tracking-widest">Sub-Total</label>
-                                            <div className="py-1 font-black text-base text-text-primary font-data">₱{item.total_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                                        </div>
-                                        <div className="flex items-center justify-center lg:pt-4">
-                                            <button type="button" onClick={() => handleRemoveItem(index)} disabled={items.length === 1} className="p-1.5 text-text-muted hover:text-brand-red hover:bg-brand-red/5 rounded-lg transition-all disabled:opacity-0"><Trash2 size={16} /></button>
                                         </div>
                                     </div>
-                                ))}
+                                </div>
+
+                                {/* Status Card */}
+                                <div className="bg-subtle/50 p-2.5 rounded-xl border border-border-default shadow-sm group">
+                                    <div className="flex items-center gap-2 mb-2 px-1">
+                                        <div className="p-1.5 bg-brand-red/10 rounded-lg text-brand-red group-hover:bg-brand-red group-hover:text-white transition-all"><ShieldCheck size={14} /></div>
+                                        <h3 className="text-[10px] font-black uppercase text-text-primary tracking-widest">Transaction Status</h3>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button type="button" onClick={() => setStatus('pending')} className={`py-2 rounded-lg border text-[10px] font-black transition-all flex items-center justify-center gap-1.5 ${status === 'pending' ? 'bg-orange-500 text-white border-orange-600 shadow-sm' : 'bg-surface text-text-muted border-border-default hover:bg-subtle'}`}><Clock size={12} /> PENDING</button>
+                                        <button type="button" onClick={() => setStatus('received')} className={`py-2 rounded-lg border text-[10px] font-black transition-all flex items-center justify-center gap-1.5 ${status === 'received' ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm' : 'bg-surface text-text-muted border-border-default hover:bg-subtle'}`}><ShieldCheck size={12} /> RECEIVED</button>
+                                    </div>
+                                </div>
+
+                                {/* Payment Card */}
+                                <div className="bg-subtle/50 p-2.5 rounded-xl border border-border-default shadow-sm group">
+                                    <div className="flex items-center gap-2 mb-2 px-1">
+                                        <div className="p-1.5 bg-brand-red/10 rounded-lg text-brand-red group-hover:bg-brand-red group-hover:text-white transition-all"><Tag size={14} /></div>
+                                        <h3 className="text-[10px] font-black uppercase text-text-primary tracking-widest">Settlement & Label</h3>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="grid grid-cols-3 gap-1.5 p-1 bg-surface border border-border-default rounded-lg">
+                                            <button type="button" onClick={() => setPaymentStatus('unpaid')} className={`py-1.5 rounded-md text-[9px] font-black transition-all ${paymentStatus === 'unpaid' ? 'bg-red-500 text-white' : 'text-text-muted hover:bg-subtle'}`}>UNPAID</button>
+                                            <button type="button" onClick={() => setPaymentStatus('partial')} className={`py-1.5 rounded-md text-[9px] font-black transition-all ${paymentStatus === 'partial' ? 'bg-amber-500 text-white' : 'text-text-muted hover:bg-subtle'}`}>PARTIAL</button>
+                                            <button type="button" onClick={() => setPaymentStatus('paid')} className={`py-1.5 rounded-md text-[9px] font-black transition-all ${paymentStatus === 'paid' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:bg-subtle'}`}>FULFILLED</button>
+                                        </div>
+                                        <div 
+                                            className="relative"
+                                            onMouseEnter={() => setIsLabelDropdownOpen(true)}
+                                            onMouseLeave={() => setIsLabelDropdownOpen(false)}
+                                        >
+                                            <button 
+                                                type="button"
+                                                className="w-full bg-surface border border-border-default rounded-lg px-3 py-2 text-[11px] font-black text-text-primary outline-none focus:border-brand-red h-[36px] uppercase flex items-center justify-between"
+                                            >
+                                                <span>{PURCHASE_LABELS.find(l => l.id === transactionLabel)?.label.toUpperCase() || 'NO LABEL'}</span>
+                                                <ChevronDown size={14} className={`transition-transform ${isLabelDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </button>
+                                            {isLabelDropdownOpen && (
+                                                <div 
+                                                    ref={labelDropdownRef}
+                                                    className="absolute z-[110] left-0 right-0 bottom-full mb-1 bg-surface border border-border-default rounded-xl shadow-2xl overflow-hidden animate-fade-in-up"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setTransactionLabel('');
+                                                            setIsLabelDropdownOpen(false);
+                                                        }}
+                                                        className="w-full text-left px-4 py-2.5 hover:bg-subtle text-[11px] font-black uppercase border-b border-border-default transition-colors"
+                                                    >
+                                                        NO LABEL
+                                                    </button>
+                                                    {PURCHASE_LABELS.map(label => (
+                                                        <button
+                                                            key={label.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTransactionLabel(label.id);
+                                                                setIsLabelDropdownOpen(false);
+                                                            }}
+                                                            className="w-full text-left px-4 py-2.5 hover:bg-subtle text-[11px] font-black uppercase border-b border-border-default last:border-0 transition-colors"
+                                                        >
+                                                            {label.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {supplierVatRegistered && (
+                                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-col gap-1 mt-auto">
+                                        <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">VAT REGISTERED SUPPLIER</p>
+                                        <div className="flex items-end justify-between">
+                                            <span className="text-[8px] text-emerald-600/70 font-bold">EST. INPUT VAT</span>
+                                            <span className="text-sm font-black text-emerald-700 font-data">₱{inputVatAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </form>
                 </div>
 
-                <div className="px-10 py-4 bg-brand-charcoal flex flex-col md:flex-row items-end md:items-center justify-between gap-6 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-brand-red/10 rounded-full blur-3xl -mr-32 -mt-32" />
-                    <div className="flex flex-wrap items-center gap-x-10 gap-y-4 text-white/60 relative z-10 w-full md:w-auto">
-                        <div className="min-w-[120px]"><p className="text-[10px] font-black uppercase opacity-50 tracking-widest mb-1.5">Subtotal</p><p className="text-base lg:text-lg font-black font-data text-white whitespace-nowrap">₱{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
-                        <div className={`min-w-[120px] transition-all ${isDiscountEnabled ? 'opacity-100' : 'opacity-20'}`}>
-                            <p className="text-[10px] font-black uppercase opacity-50 tracking-widest mb-1.5">Discount (10%)</p>
-                            <p className="text-base lg:text-lg font-black font-data text-brand-orange whitespace-nowrap">- ₱{discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                {/* Footer Section (Consistent with SalesModal) */}
+                <div className="h-[100px] bg-brand-charcoal border-t border-white/5 flex items-center justify-between px-8 relative overflow-hidden shrink-0">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-brand-red/5 rounded-full blur-3xl -mr-32 -mt-32" />
+                    <div className="flex items-center gap-12 text-white/60 relative z-10 h-full">
+                        <div className="group">
+                            <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1.5 group-hover:text-brand-red transition-colors">Net Total</p>
+                            <p className="text-xl font-black font-data text-white lining-nums">₱{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                         </div>
+                        {isDiscountEnabled && (
+                            <div className="group">
+                                <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1.5 text-brand-orange">Discount (10%)</p>
+                                <p className="text-xl font-black font-data text-brand-orange lining-nums">-₱{discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                            </div>
+                        )}
                     </div>
-                    <div className="flex flex-col items-end relative z-10 w-full md:w-auto max-w-full overflow-hidden">
-                        <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] mb-1 leading-none">Total Payable</p>
-                        <div className="flex flex-wrap items-center justify-end gap-6 text-right">
-                            <p className="text-3xl lg:text-4xl font-black text-white font-data shadow-sm whitespace-nowrap">₱{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                            <button form="purchase-form" type="submit" ref={saveButtonRef} disabled={loading || success} className="px-8 py-4 bg-brand-red hover:bg-brand-red-dark text-white rounded-2xl font-black text-sm shadow-red active:scale-95 disabled:opacity-50 tracking-widest uppercase focus:ring-2 focus:ring-brand-red ring-offset-2 outline-none">
-                                {loading ? 'SYNCING...' : success ? 'SAVED!' : 'SAVE PURCHASE'}
-                            </button>
+
+                    <div className="flex items-center gap-8 relative z-10">
+                        <div className="text-right">
+                            <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] mb-1">TOTAL PAYABLE</p>
+                            <p className="text-4xl font-black text-white font-data tracking-tight lining-nums shadow-sm">₱{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                         </div>
+                        <button 
+                            form="purchase-form" 
+                            type="submit" 
+                            ref={saveButtonRef} 
+                            disabled={loading || success} 
+                            className="h-[60px] min-w-[200px] bg-brand-red hover:bg-brand-red-dark text-white rounded-2xl font-black text-base shadow-xl shadow-brand-red/20 active:scale-95 disabled:opacity-50 transition-all uppercase tracking-widest flex items-center justify-center gap-3"
+                        >
+                            {loading ? (
+                                <>
+                                    <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                                    SYNCING...
+                                </>
+                            ) : success ? 'SAVED!' : (
+                                <>
+                                    <Truck size={20} />
+                                    SAVE PURCHASE
+                                </>
+                            )}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1079,7 +1182,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
             {/* Success Receipt Overlay */}
             {success && (
                 <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-bg-surface rounded-3xl p-8 max-w-md w-full shadow-2xl border border-border-muted animate-slide-up relative overflow-hidden text-text-primary">
+                    <div className="bg-surface rounded-3xl p-8 max-w-md w-full shadow-2xl border border-border-default animate-slide-up relative overflow-hidden text-text-primary">
                         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-emerald-400 to-brand-red" />
 
                         <div className="text-center mb-8">
@@ -1090,7 +1193,7 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                             <p className="text-text-secondary text-sm font-bold">Check invoice details before saving</p>
                         </div>
 
-                        <div className="border-2 border-dashed border-border-muted rounded-2xl p-6 space-y-6 bg-bg-subtle/50">
+                        <div className="border-2 border-dashed border-border-default rounded-2xl p-6 space-y-6 bg-subtle/50">
                             <div className="flex justify-between items-start">
                                 <div>
                                     <h3 className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-4">INVOICE #</h3>
@@ -1103,21 +1206,21 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                             </div>
 
                             <div className="space-y-3">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest pb-1 border-b border-slate-100">Itemized List</p>
+                                <p className="text-[9px] font-black text-text-muted uppercase tracking-widest pb-1 border-b border-border-default">Itemized List</p>
                                 <div className="max-h-48 overflow-y-auto pr-2 space-y-2 scrollbar-hide">
                                     {savedData.map((item, idx) => (
                                         <div key={idx} className="flex justify-between text-[11px]">
                                             <div className="flex-1">
-                                                <p className="font-bold text-slate-700 leading-tight">{item.products?.name}</p>
-                                                <p className="text-[9px] text-slate-400 font-data">x{item.quantity} @ ₱{item.unit_price.toLocaleString()}</p>
+                                                <p className="font-bold text-text-primary leading-tight">{item.products?.name}</p>
+                                                <p className="text-[9px] text-text-muted font-data">x{item.quantity} @ ₱{item.unit_price.toLocaleString()}</p>
                                             </div>
-                                            <p className="font-black text-brand-charcoal font-data">₱{item.total_price.toLocaleString()}</p>
+                                            <p className="font-black text-text-primary font-data">₱{item.total_price.toLocaleString()}</p>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
-                            <div className="pt-4 border-t-2 border-dashed border-border-muted space-y-2">
+                            <div className="pt-4 border-t-2 border-dashed border-border-default space-y-2">
                                 <div className="flex justify-between text-[10px]">
                                     <span className="font-black text-text-muted uppercase">Subtotal</span>
                                     <span className="font-black text-text-primary font-data">₱{subtotal.toLocaleString()}</span>
@@ -1137,8 +1240,8 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                         <button
                             onClick={() => {
                                 onSuccess(savedData);
-                                // Stay open but reset for next transaction
-                                setInvoiceNumber('PUR-' + Math.random().toString(36).substring(2, 8).toUpperCase());
+                                // Reset for next transaction
+                                fetchLatestPurchaseInvoice();
                                 setItems([{
                                     product_id: '',
                                     quantity: 1,
@@ -1154,7 +1257,8 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                                 setSupplierSearchQuery('');
                                 setSuccess(false);
                                 resetNav();
-                                setTimeout(() => supplierSearchInputRef.current?.focus(), 100);
+                                // User Request: seamless keyboard only architecture
+                                setTimeout(() => searchInputRefs.current[0]?.focus(), 150);
                             }}
                             className="w-full mt-8 py-4 bg-brand-red text-white rounded-2xl font-black text-sm hover:bg-brand-red-dark transition-all active:scale-[0.98] uppercase tracking-[0.2em] shadow-xl shadow-brand-red/20"
                         >

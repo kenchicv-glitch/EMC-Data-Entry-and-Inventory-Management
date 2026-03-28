@@ -131,12 +131,15 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, expense }: Ex
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 px-4">
             <div className="w-full max-w-lg rounded-2xl bg-surface shadow-2xl border border-border-default flex flex-col animate-slide-up text-left">
-                <div className="flex items-center justify-between px-6 py-3 bg-text-primary">
-                    <div className="flex items-center gap-3 text-text-inverse">
-                        <div className="w-8 h-8 bg-brand-red rounded-lg flex items-center justify-center"><Wallet size={16} /></div>
-                        <h2 className="text-base font-black uppercase tracking-tight">{expense ? 'Edit Expense' : 'Log Expense'}</h2>
+                <div className="flex items-center justify-between px-6 py-4 bg-subtle/50 border-b border-border-default">
+                    <div className="flex items-center gap-3 text-text-primary">
+                        <div className="w-8 h-8 bg-brand-red/10 rounded-lg flex items-center justify-center text-brand-red"><Wallet size={16} /></div>
+                        <div>
+                            <h2 className="text-xl font-black uppercase tracking-tight leading-none">{expense ? 'Edit Expense' : 'Log Expense'}</h2>
+                            <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">Recording & Analytics</p>
+                        </div>
                     </div>
-                    <button onClick={onClose} className="text-text-muted hover:text-text-inverse transition-colors"><X size={18} /></button>
+                    <button onClick={onClose} className="p-2 rounded-xl text-text-muted hover:text-brand-red hover:bg-surface transition-all active:scale-95"><X size={18} /></button>
                 </div>
 
                 <div className="p-6">
@@ -150,7 +153,7 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, expense }: Ex
                                         key={cat}
                                         type="button"
                                         onClick={() => setCategory(cat)}
-                                        className={`py-2.5 rounded-xl text-[10px] font-black uppercase border transition-all ${category === cat ? 'bg-brand-red text-text-inverse border-brand-red shadow-lg' : 'bg-surface text-text-secondary border-border-strong hover:border-brand-red'}`}
+                                        className={`py-2.5 rounded-xl text-[10px] font-black uppercase border transition-all ${category === cat ? 'bg-brand-red text-white border-brand-red shadow-lg' : 'bg-surface text-text-secondary border-border-default hover:border-brand-red'}`}
                                     >
                                         {cat}
                                     </button>
@@ -201,7 +204,7 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, expense }: Ex
                     </form>
                 </div>
 
-                <div className="px-6 py-4 bg-bg-subtle border-t border-border-muted flex items-center justify-between rounded-b-2xl">
+                <div className="px-6 py-4 bg-subtle border-t border-border-default flex items-center justify-between rounded-b-2xl">
                     <button type="button" onClick={onClose} className="text-[10px] font-black text-text-muted hover:text-text-primary transition-colors uppercase tracking-widest">Cancel</button>
                     <button
                         type="submit"

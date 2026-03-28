@@ -27,7 +27,6 @@ const ProfitAnalysis = lazy(() => import('./features/dashboard/ProfitAnalysis'))
 const Settings = lazy(() => import('./features/auth/Settings'));
 const Suppliers = lazy(() => import('./features/suppliers/Suppliers'));
 const Customers = lazy(() => import('./features/customers/Customers'));
-const ExpressSales = lazy(() => import('./features/sales/ExpressSales'));
 const TaxDashboard = lazy(() => import('./features/reports/TaxDashboard'));
 const AdminCommandCenter = lazy(() => import('./features/dashboard/AdminCommandCenter'));
 const BranchInventory = lazy(() => import('./features/inventory/BranchInventory'));
@@ -76,7 +75,6 @@ function AppRoutes() {
 
                 {/* Shared routes */}
                 <Route path="/sales" element={<Sales />} />
-                <Route path="/express-sales" element={<ExpressSales />} />
                 <Route path="/purchases" element={<Purchases />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/admin-pricelist" element={<AdminPricelist />} />

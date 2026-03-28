@@ -7,10 +7,12 @@ import {
     RotateCcw, LogOut, Bell, ClipboardList,
     ChevronDown, Menu, X, Tag, Wallet,
     Calendar, Settings as SettingsIcon, LineChart,
-    Users, ArrowLeft, ArrowRightLeft, FileBarChart, Calculator, Building2, BookOpen
+    Users, ArrowLeft, ArrowRightLeft, FileBarChart, Calculator, Building2, BookOpen,
+    Eye, EyeOff
 } from 'lucide-react';
 import logo from '../../assets/brand-logo.png';
 import ThemeToggle from './ThemeToggle';
+import { usePageRestrictions } from '../hooks/usePageRestrictions';
 import type { Workspace } from '../lib/WorkspaceContextExports';
 import type { Branch } from '../lib/BranchContextExports';
 import { useBranch } from '../hooks/useBranch';
@@ -27,10 +29,15 @@ interface SidebarLinkProps {
     icon: React.ElementType;
     end?: boolean;
     onClick: () => void;
+    restrictedPaths?: string[];
+    canAccessMaster?: boolean;
 }
 
-const SidebarLink = ({ to, label, icon: Icon, end = false, onClick }: SidebarLinkProps) => (
-    <NavLink
+const SidebarLink = ({ to, label, icon: Icon, end = false, onClick, restrictedPaths = [], canAccessMaster = false }: SidebarLinkProps) => {
+    if (!canAccessMaster && restrictedPaths.includes(to)) return null;
+
+    return (
+        <NavLink
         to={to}
         end={end}
         onClick={onClick}
@@ -48,7 +55,8 @@ const SidebarLink = ({ to, label, icon: Icon, end = false, onClick }: SidebarLin
             </>
         )}
     </NavLink>
-);
+    );
+};
 
 interface SidebarProps {
     role: string | null;
@@ -65,14 +73,53 @@ interface SidebarProps {
     branches: Branch[];
     activeBranchId: string | null;
     setActiveBranchId: (id: string) => void;
+    restrictedPaths: string[];
+    batchToggleRestriction?: (paths: string[], isNowRestricted: boolean) => void;
 }
 
 const Sidebar = ({ 
     role, userEmail, userInitials, signOut, setIsSidebarOpen, openMenus, 
     toggleMenu, currentWorkspace, handleSwitchWorkspace, displayName,
-    branches, activeBranchId, setActiveBranchId
+    branches, activeBranchId, setActiveBranchId, restrictedPaths, batchToggleRestriction
 }: SidebarProps) => {
     const { canAccessMaster } = usePermissions();
+
+    const renderSection = (menuKey: string, label: string, paths: string[], children: React.ReactNode) => {
+        const isAllRestricted = paths.length > 0 && paths.every(p => restrictedPaths.includes(p));
+        
+        if (!canAccessMaster && isAllRestricted) return null;
+
+        return (
+            <div className="space-y-1">
+                <div className="flex items-center justify-between px-3 py-2 group">
+                    <button
+                        onClick={() => toggleMenu(menuKey)}
+                        className="flex flex-1 items-center justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors"
+                    >
+                        <span>{label}</span>
+                        <ChevronDown size={14} className={`transition-transform duration-300 mr-2 ${openMenus[menuKey] ? 'rotate-180' : ''}`} />
+                    </button>
+                    {canAccessMaster && paths.length > 0 && (
+                        <button
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                if (batchToggleRestriction) batchToggleRestriction(paths, !isAllRestricted);
+                            }}
+                            className={`p-1 rounded transition-colors ${isAllRestricted ? 'text-brand-red bg-brand-red/10 hover:bg-brand-red/20' : 'text-slate-500 hover:text-white hover:bg-white/10'}`}
+                            title={isAllRestricted ? "Make section visible to everyone" : "Restrict entire section to Owners only"}
+                        >
+                            {isAllRestricted ? <EyeOff size={12} /> : <Eye size={12} />}
+                        </button>
+                    )}
+                </div>
+                {openMenus[menuKey] && (
+                    <div className="space-y-1 mt-1 animate-slide-up">
+                        {children}
+                    </div>
+                )}
+            </div>
+        );
+    };
     
     return (
     <aside className="w-64 flex-shrink-0 bg-brand-charcoal flex flex-col h-full border-r border-white/5">
@@ -112,77 +159,52 @@ const Sidebar = ({
             </div>
         )}
 
+        {/* Context Switcher Button - Sticky Top */}
+        <div className="px-4 py-4 border-b border-white/5 bg-brand-charcoal z-10 shrink-0">
+            <button
+                onClick={handleSwitchWorkspace}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all group border border-white/5 hover:border-white/20 shadow-sm"
+            >
+                <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Switch Workspace</span>
+            </button>
+        </div>
+
         <nav className="flex-1 px-4 py-6 space-y-6 overflow-y-auto custom-scrollbar">
             {currentWorkspace === 'systems' && (
                 <>
-                    <div className="space-y-1">
-                        <button
-                            onClick={() => toggleMenu('overview')}
-                            className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors group"
-                        >
-                            <span>Systems Overview</span>
-                            <ChevronDown size={14} className={`transition-transform duration-300 ${openMenus.overview ? 'rotate-180' : ''}`} />
-                        </button>
-                        {openMenus.overview && (
-                            <div className="space-y-1 mt-1 animate-slide-up">
-                                <SidebarLink to="/" label="Overview" icon={LayoutDashboard} end={true} onClick={() => setIsSidebarOpen(false)} />
-                                <SidebarLink to="/sales" label="Sales" icon={ShoppingCart} onClick={() => setIsSidebarOpen(false)} />
-                                <SidebarLink to="/purchases" label="Purchases" icon={Truck} onClick={() => setIsSidebarOpen(false)} />
-                                <SidebarLink to="/inventory" label="Inventory" icon={Package} onClick={() => setIsSidebarOpen(false)} />
-                                <SidebarLink to="/transfers" label="Transfers" icon={ArrowRightLeft} onClick={() => setIsSidebarOpen(false)} />
-                            </div>
-                        )}
-                    </div>
+                    {renderSection('overview', 'Systems Overview', ['/', '/sales', '/purchases', '/inventory', '/transfers'], (
+                        <>
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/" label="Overview" icon={LayoutDashboard} end={true} onClick={() => setIsSidebarOpen(false)} />
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/sales" label="Sales" icon={ShoppingCart} onClick={() => setIsSidebarOpen(false)} />
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/purchases" label="Purchases" icon={Truck} onClick={() => setIsSidebarOpen(false)} />
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/inventory" label="Inventory" icon={Package} onClick={() => setIsSidebarOpen(false)} />
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/transfers" label="Transfers" icon={ArrowRightLeft} onClick={() => setIsSidebarOpen(false)} />
+                        </>
+                    ))}
 
-                    <div className="space-y-1">
-                        <button
-                            onClick={() => toggleMenu('externals')}
-                            className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors group"
-                        >
-                            <span>Externals</span>
-                            <ChevronDown size={14} className={`transition-transform duration-300 ${openMenus.externals ? 'rotate-180' : ''}`} />
-                        </button>
-                        {openMenus.externals && (
-                            <div className="space-y-1 mt-1 animate-slide-up">
-                                <SidebarLink to="/suppliers" label="Suppliers" icon={Truck} onClick={() => setIsSidebarOpen(false)} />
-                                <SidebarLink to="/customers" label="Customers" icon={Users} onClick={() => setIsSidebarOpen(false)} />
-                                <SidebarLink to="/returns" label="Supplier Returns" icon={RotateCcw} onClick={() => setIsSidebarOpen(false)} />
-                                <SidebarLink to="/customer-refunds" label="Customer Refunds" icon={RotateCcw} onClick={() => setIsSidebarOpen(false)} />
-                            </div>
-                        )}
-                    </div>
+                    {renderSection('externals', 'Externals', ['/suppliers', '/customers', '/returns', '/customer-refunds'], (
+                        <>
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/suppliers" label="Suppliers" icon={Truck} onClick={() => setIsSidebarOpen(false)} />
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/customers" label="Customers" icon={Users} onClick={() => setIsSidebarOpen(false)} />
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/returns" label="Supplier Returns" icon={RotateCcw} onClick={() => setIsSidebarOpen(false)} />
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/customer-refunds" label="Customer Refunds" icon={RotateCcw} onClick={() => setIsSidebarOpen(false)} />
+                        </>
+                    ))}
 
-                    <div className="space-y-1">
-                        <button
-                            onClick={() => toggleMenu('financials')}
-                            className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors group"
-                        >
-                            <span>Financials</span>
-                            <ChevronDown size={14} className={`transition-transform duration-300 ${openMenus.financials ? 'rotate-180' : ''}`} />
-                        </button>
-                        {openMenus.financials && (
-                            <div className="space-y-1 mt-1 animate-slide-up">
-                                <SidebarLink to="/summary" label="DSC" icon={Calendar} onClick={() => setIsSidebarOpen(false)} />
-                                <SidebarLink to="/inventory-summary" label="Daily Inventory Summary" icon={ClipboardList} onClick={() => setIsSidebarOpen(false)} />
-                                <SidebarLink to="/expenses" label="Expenses" icon={Wallet} onClick={() => setIsSidebarOpen(false)} />
-                            </div>
-                        )}
-                    </div>
+                    {renderSection('financials', 'Financials', ['/summary', '/inventory-summary', '/expenses'], (
+                        <>
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/summary" label="DSC" icon={Calendar} onClick={() => setIsSidebarOpen(false)} />
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/inventory-summary" label="Daily Inventory Summary" icon={ClipboardList} onClick={() => setIsSidebarOpen(false)} />
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/expenses" label="Expenses" icon={Wallet} onClick={() => setIsSidebarOpen(false)} />
+                        </>
+                    ))}
 
-                    <div className="space-y-1">
-                        <button
-                            onClick={() => toggleMenu('instructions')}
-                            className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors group"
-                        >
-                            <span>Instructions</span>
-                            <ChevronDown size={14} className={`transition-transform duration-300 ${openMenus.instructions ? 'rotate-180' : ''}`} />
-                        </button>
-                        {openMenus.instructions && (
-                            <div className="space-y-1 mt-1 animate-slide-up">
-                                <SidebarLink to="/guide" label="Guide" icon={BookOpen} onClick={() => setIsSidebarOpen(false)} />
-                            </div>
-                        )}
-                    </div>
+                    {renderSection('instructions', 'Instructions', ['/guide'], (
+                        <>
+                            <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/guide" label="Guide" icon={BookOpen} onClick={() => setIsSidebarOpen(false)} />
+                        </>
+                    ))}
 
                 </>
             )}
@@ -191,8 +213,8 @@ const Sidebar = ({
                 <div className="space-y-1">
                     <p className="px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">BIR & Exports</p>
                     <div className="space-y-1 mt-1">
-                        <SidebarLink to="/tax-dashboard" label="Tax Computation" icon={Calculator} onClick={() => setIsSidebarOpen(false)} />
-                        <SidebarLink to="/summary" label="DS Journal" icon={FileBarChart} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/tax-dashboard" label="Tax Computation" icon={Calculator} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/summary" label="DS Journal" icon={FileBarChart} onClick={() => setIsSidebarOpen(false)} />
                     </div>
                 </div>
             )}
@@ -201,25 +223,15 @@ const Sidebar = ({
                 <div className="space-y-1">
                     <p className="px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">Owner's Space</p>
                     <div className="space-y-1 mt-1 animate-slide-up">
-                        <SidebarLink to="/admin" label="Command Center" icon={LayoutDashboard} onClick={() => setIsSidebarOpen(false)} />
-                        <SidebarLink to="/profit" label="Profit Analysis" icon={LineChart} onClick={() => setIsSidebarOpen(false)} />
-                        <SidebarLink to="/branch-inventory" label="Branch Inventory" icon={Building2} onClick={() => setIsSidebarOpen(false)} />
-                        <SidebarLink to="/admin-pricelist" label="Admin Pricelist" icon={Tag} onClick={() => setIsSidebarOpen(false)} />
-                        <SidebarLink to="/branch-management" label="Branch Management" icon={SettingsIcon} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/admin" label="Command Center" icon={LayoutDashboard} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/profit" label="Profit Analysis" icon={LineChart} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/branch-inventory" label="Branch Inventory" icon={Building2} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/admin-pricelist" label="Admin Pricelist" icon={Tag} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/branch-management" label="Branch Management" icon={SettingsIcon} onClick={() => setIsSidebarOpen(false)} />
                     </div>
                 </div>
             )}
 
-            {/* Context Switcher Button */}
-            <div className="pt-4 mt-4 border-t border-white/5">
-                <button
-                    onClick={handleSwitchWorkspace}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-all group"
-                >
-                    <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Switch Workspace</span>
-                </button>
-            </div>
         </nav>
 
         <div className="px-4 py-6 border-t border-white/5 bg-black/20">
@@ -263,6 +275,7 @@ export default function Layout() {
         closePurchaseModal 
     } = useModal();
     const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
+    const { restrictedPaths, loadingRestrictions, toggleRestriction, batchToggleRestriction } = usePageRestrictions();
 
     const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
         overview: true,
@@ -282,6 +295,14 @@ export default function Layout() {
             navigate('/home');
         }
     }, [user, currentWorkspace, navigate, location.pathname]);
+
+    const isRestricted = restrictedPaths.includes(location.pathname);
+
+    React.useEffect(() => {
+        if (!loadingRestrictions && isRestricted && !canAccessMaster && location.pathname !== '/home') {
+            navigate('/home');
+        }
+    }, [isRestricted, loadingRestrictions, canAccessMaster, navigate, location.pathname]);
 
     // Global Keyboard Shortcuts (bare keys — N, P, Escape, F1)
     React.useEffect(() => {
@@ -402,7 +423,9 @@ export default function Layout() {
         displayName,
         branches,
         activeBranchId,
-        setActiveBranchId
+        setActiveBranchId,
+        restrictedPaths,
+        batchToggleRestriction
     };
 
     return (
@@ -459,6 +482,20 @@ export default function Layout() {
                     </div>
 
                     <div className="flex items-center gap-4">
+                        {canAccessMaster && (
+                            <button
+                                onClick={() => toggleRestriction(location.pathname, !isRestricted)}
+                                className={`hidden md:flex items-center gap-2 px-4 py-2.5 rounded-2xl border transition-all text-[10px] font-black uppercase tracking-widest ${
+                                    isRestricted 
+                                    ? 'bg-brand-red/10 border-brand-red/20 text-brand-red hover:bg-brand-red/20' 
+                                    : 'bg-bg-subtle hover:bg-bg-muted border-border-default text-text-secondary hover:text-text-primary'
+                                }`}
+                                title={isRestricted ? "Make page visible to all" : "Restrict page to Owners only"}
+                            >
+                                {isRestricted ? <EyeOff size={14} /> : <Eye size={14} />}
+                                {isRestricted ? 'Page Hidden' : 'Owner Beta'}
+                            </button>
+                        )}
                         <button
                             onClick={handleSwitchWorkspace}
                             className="hidden md:flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-bg-subtle hover:bg-bg-muted border border-border-default text-text-secondary hover:text-text-primary transition-all text-[10px] font-black uppercase tracking-widest"
@@ -498,6 +535,16 @@ export default function Layout() {
                 />
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-bg-base/50">
+                    {isRestricted && canAccessMaster && (
+                        <div className="bg-brand-red/10 border-b border-brand-red/20 text-brand-red py-2.5 px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm shrink-0">
+                            <div className="flex items-center gap-2 font-black text-[11px] uppercase tracking-widest">
+                                <EyeOff size={14} /> Owner Beta active
+                            </div>
+                            <span className="font-bold text-[10px] uppercase tracking-wider opacity-80">
+                                This page is currently hidden from non-Owner users
+                            </span>
+                        </div>
+                    )}
                     <div 
                         key={location.pathname}
                         className="p-8 lg:p-10 max-w-[1600px] mx-auto animate-page-entry"
