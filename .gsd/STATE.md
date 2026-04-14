@@ -1,24 +1,38 @@
 # STATE.md
 
 ## Last Session Summary
-Phase 10 (Inventory Revamp) added to roadmap via SOP. Phase 9 (DSC Integration) remains unstarted and independent.
+Phase 10 (Inventory Revamp) — **EXECUTED AND COMMITTED** (commit `971cb76`).
 
 ### Accomplishments
-- **Roadmap Updated**: Phase 10 added to `ROADMAP.md` with full scope from SOP v1.0 — hierarchical categories, shelf/bin locations, bulk import/export, full-page inventory UI, and stocktake sessions.
-- **SOP Captured**: All constraints, implementation order, and verification criteria encoded directly in the phase tasks.
+- **Phase 10 PLAN.md** — created at `.gsd/phases/10/PLAN.md` with corrected audit findings
+- **Wave 2 — Types**: Extended `product.ts` with `Category`, `CategoryTree`, `InventoryLocation`, `StocktakeSession`, `StocktakeItem`, `ProductImportRow`, `ProductImportResult`
+- **Wave 3 — Services**: `categoryService.ts`, `locationService.ts`, `stocktakeService.ts`, `inventoryExportService.ts` (ExcelJS)
+- **Wave 4 — Hooks**: `useCategories.ts`, `useLocations.ts`, `useStocktake.ts`; appended `useProducts.ts` with `useProductsWithDetails`, `useLowStockProducts`, `useImportProducts`
+- **Wave 5 — Components**: `CategoryTree`, `CategoryFormModal`, `LocationFormModal`, `LowStockBadge`, `ProductTable` (TanStack Table v8), `ProductFilters`, `ProductQuickViewModal`, `ProductImportModal`, `StocktakeTable`
+- **Wave 6 — Pages**: `InventoryPage`, `InventoryCategoriesPage`, `InventoryLocationsPage`, `StocktakePage`
+- **Wave 7 — Routing**: App.tsx wired `/inventory`, `/inventory/categories`, `/inventory/locations`, `/inventory/stocktake`
+- **Zero new TS errors** — all 24 new files compile clean
+
+### Key SOP Overrides Confirmed
+- `branch_id` in app context is **UUID `string`** (not bigint) — all code uses `string`
+- Hook import paths: `'../../../shared/hooks/useBranch'` + `'../../../shared/hooks/useAuth'`
+- No `@/` alias — relative paths only in inventory feature
 
 ### Current Position
-- **Active Feature**: Phase 10: Inventory Revamp — Full Module Overhaul (queued for planning)
-- **Parallel**: Phase 9: Systems Data Integration for DSC (also ⬜ Not Started)
+- **Phase 10**: ✅ Code complete — **PENDING**: SQL migrations must be run in Supabase
+- **Phase 9**: ⬜ Not Started (DSC Systems Data Integration)
 - **Milestone**: v2.1 Performance & Accuracy Stability
 
-### Key Constraints for Phase 10
-- `products` table: 2,466 live rows — ALTER ONLY, never DROP
-- `branch_id` type: `bigint` → TypeScript `number` everywhere
-- Tailwind v4 only; no shadcn/ui
-- Do NOT delete existing modal files (`CategoryRenameModal.tsx`, `ProductModal.tsx`, `TransferRequestModal.tsx`)
+### ⚠️ Action Required — SQL Migrations (run in Supabase SQL Editor in order)
+The code is deployed but the DB tables don't exist yet. The user MUST run the 4 SQL scripts from `.gsd/phases/10/PLAN.md` in Supabase:
+1. `CREATE TABLE inv_categories` (with indexes)
+2. `CREATE TABLE inv_locations` (with indexes)
+3. `CREATE TABLE inv_stocktakes` + `inv_stocktake_items`
+4. `ALTER TABLE products ADD COLUMN ...` (8 new columns)
 
 ### Next Steps
-1. Run `/plan 10` to create the detailed execution plan for Phase 10.
-2. Start with SQL migrations (inv_categories → inv_locations → inv_stocktakes → ALTER products).
-3. Clarify open questions from SOP Part 13 (Supabase client path, existing branch context hook, shared components).
+1. **SQL**: Paste 4 scripts from `.gsd/phases/10/PLAN.md` into Supabase SQL editor
+2. **Verify**: Navigate to `/inventory` — confirm sub-nav tabs, category sidebar, product table render
+3. **Verify**: Navigate to `/inventory/categories` — confirm CRUD works
+4. **Verify**: Navigate to `/inventory/stocktake` — confirm session creation
+5. After verification: run `/complete-milestone` or proceed to Phase 9
