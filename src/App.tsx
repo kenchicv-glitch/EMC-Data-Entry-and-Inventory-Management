@@ -16,7 +16,10 @@ import { useTheme } from './shared/hooks/useTheme';
 const Dashboard = lazy(() => import('./features/dashboard/Dashboard'));
 const Sales = lazy(() => import('./features/sales/Sales'));
 const Purchases = lazy(() => import('./features/purchases/Purchases'));
-const Inventory = lazy(() => import('./features/inventory/Inventory'));
+const InventoryPage = lazy(() => import('./features/inventory/pages/InventoryPage'));
+const InventoryCategoriesPage = lazy(() => import('./features/inventory/pages/InventoryCategoriesPage'));
+const InventoryLocationsPage = lazy(() => import('./features/inventory/pages/InventoryLocationsPage'));
+const StocktakePage = lazy(() => import('./features/inventory/pages/StocktakePage'));
 const Returns = lazy(() => import('./features/purchases/Returns'));
 const CustomerRefunds = lazy(() => import('./features/sales/CustomerRefunds'));
 const AdminPricelist = lazy(() => import('./features/inventory/AdminPricelist'));
@@ -33,6 +36,9 @@ const BranchInventory = lazy(() => import('./features/inventory/BranchInventory'
 const BranchInventoryDetail = lazy(() => import('./features/inventory/BranchInventoryDetail'));
 const Transfers = lazy(() => import('./features/transfers/Transfers'));
 const GuidePage = lazy(() => import('./features/guide/pages/GuidePage'));
+const DscHomePage = lazy(() => import('./features/dsc/pages/DscHomePage'));
+const DscDailyPage = lazy(() => import('./features/dsc/pages/DscDailyPage'));
+const DscMonthlySummaryPage = lazy(() => import('./features/dsc/pages/DscMonthlySummaryPage'));
 
 import { useAuth } from './shared/hooks/useAuth';
 import { usePermissions } from './shared/hooks/usePermissions';
@@ -76,7 +82,10 @@ function AppRoutes() {
                 {/* Shared routes */}
                 <Route path="/sales" element={<Sales />} />
                 <Route path="/purchases" element={<Purchases />} />
-                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/inventory" element={<InventoryPage />} />
+                <Route path="/inventory/categories" element={<InventoryCategoriesPage />} />
+                <Route path="/inventory/locations" element={<InventoryLocationsPage />} />
+                <Route path="/inventory/stocktake" element={<StocktakePage />} />
                 <Route path="/admin-pricelist" element={<AdminPricelist />} />
                 <Route path="/returns" element={<Returns />} />
                 <Route path="/customer-refunds" element={<CustomerRefunds />} />
@@ -90,6 +99,9 @@ function AppRoutes() {
                 <Route path="/profit" element={<ProfitAnalysis />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/guide" element={<GuidePage />} />
+                <Route path="/dsc" element={<DscHomePage />} />
+                <Route path="/dsc/summary" element={<DscMonthlySummaryPage />} />
+                <Route path="/dsc/:date" element={<DscDailyPage />} />
             </Route>
 
             <Route path="/home" element={<EncoderGuard><Home /></EncoderGuard>} />

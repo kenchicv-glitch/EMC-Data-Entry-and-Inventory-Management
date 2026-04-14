@@ -264,3 +264,155 @@ export const productService = {
         return updated;
     }
 };
+
+// ============================================================
+// PHASE 10 ADDITIONS — appended below, productService above untouched
+// ============================================================
+
+import type { ProductImportRow, ProductImportResult } from '../types/product';
+import { resolveCategoryPath, getAllCategories } from './categoryService';
+import { resolveLocationCode, getAllLocations } from './locationService';
+
+// Products with category + location joined
+export async function getProductsWithDetails(branchId: string) {
+    const { data, error } = await supabase
+        .from('products')
+        .select(`
+            *,
+            category:inv_categories(id, name, slug, depth, color, parent_id),
+            location:inv_locations(id, name, code)
+        `)
+        .eq('branch_id', branchId)
+        .eq('is_active', true)
+        .order('name');
+    if (error) throw error;
+    return data ?? [];
+}
+
+// Products filtered by a category AND all its descendant categories
+export async function getProductsByCategory(categoryId: string, branchId: string) {
+    const { data: allCats } = await supabase
+        .from('inv_categories')
+        .select('id, parent_id');
+
+    const getDescendants = (id: string): string[] => {
+        const children = (allCats ?? [])
+            .filter(c => c.parent_id === id)
+            .map(c => c.id);
+        return [id, ...children.flatMap(child => getDescendants(child))];
+    };
+
+    const categoryIds = getDescendants(categoryId);
+
+    const { data, error } = await supabase
+        .from('products')
+        .select(`
+            *,
+            category:inv_categories(id, name, slug, depth, color),
+            location:inv_locations(id, name, code)
+        `)
+        .in('category_id', categoryIds)
+        .eq('branch_id', branchId)
+        .eq('is_active', true)
+        .order('name');
+    if (error) throw error;
+    return data ?? [];
+}
+
+// Low-stock products (stock_available <= low_stock_threshold)
+export async function getLowStockProducts(branchId: string) {
+    const { data, error } = await supabase
+        .from('products')
+        .select(`*, category:inv_categories(id, name, slug)`)
+        .eq('branch_id', branchId)
+        .eq('is_active', true)
+        .gt('low_stock_threshold', 0)
+        .order('stock_available');
+    if (error) throw error;
+    // Filter client-side since Supabase doesn't support column-vs-column comparisons in JS client
+    return (data ?? []).filter(
+        p => p.stock_available <= (p.low_stock_threshold ?? 0)
+    );
+}
+
+// Bulk import from parsed rows
+export async function importProductsFromRows(
+    rows: ProductImportRow[],
+    branchId: string,
+    _userId: string
+): Promise<ProductImportResult> {
+    const result: ProductImportResult = {
+        total: rows.length,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        errors: [],
+    };
+
+    const [allCategories, allLocations] = await Promise.all([
+        getAllCategories(),
+        getAllLocations(branchId),
+    ]);
+
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        try {
+            if (!row.sku || !row.name) {
+                result.errors.push({ row: i + 2, sku: row.sku ?? '', error: 'SKU and name are required' });
+                result.skipped++;
+                continue;
+            }
+
+            const categoryId = row.category_path
+                ? await resolveCategoryPath(row.category_path, allCategories)
+                : null;
+
+            const locationId = row.location_code
+                ? await resolveLocationCode(row.location_code, allLocations)
+                : null;
+
+            const { data: existing } = await supabase
+                .from('products')
+                .select('id')
+                .eq('sku', row.sku)
+                .eq('branch_id', branchId)
+                .maybeSingle();
+
+            const productData = {
+                sku:                    row.sku,
+                name:                   row.name,
+                description:            row.description ?? null,
+                brand:                  row.brand ?? null,
+                unit:                   row.unit ?? null,
+                selling_price:          Number(row.selling_price) || 0,
+                buying_price:           Number(row.buying_price) || 0,
+                supplier_selling_price: Number(row.supplier_selling_price) || 0,
+                stock_available:        Number(row.stock_available) || 0,
+                low_stock_threshold:    Number(row.low_stock_threshold) || 0,
+                category_id:            categoryId,
+                location_id:            locationId,
+                branch_id:              branchId,
+                is_active:              true,
+            };
+
+            if (existing) {
+                const { error } = await supabase
+                    .from('products')
+                    .update(productData)
+                    .eq('id', existing.id);
+                if (error) throw error;
+                result.updated++;
+            } else {
+                const { error } = await supabase.from('products').insert(productData);
+                if (error) throw error;
+                result.created++;
+            }
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            result.errors.push({ row: i + 2, sku: row.sku ?? '', error: message });
+            result.skipped++;
+        }
+    }
+
+    return result;
+}

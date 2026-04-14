@@ -126,3 +126,57 @@ export const useProducts = () => {
         isChoicesLoading: choicesQuery.isLoading
     };
 };
+
+// ============================================================
+// PHASE 10 ADDITIONS — appended below, useProducts above untouched
+// ============================================================
+
+import { useQueryClient as useQC, useMutation as useMut, useQuery as useQ } from '@tanstack/react-query';
+import {
+    getProductsWithDetails,
+    getLowStockProducts,
+    importProductsFromRows,
+} from '../services/productService';
+import type { ProductImportRow } from '../types/product';
+import { categoryKeys } from './useCategories';
+
+export function useProductsWithDetails(branchId: string | null) {
+    return useQ({
+        queryKey: ['inventory', 'products', 'detailed', branchId],
+        queryFn:  () => getProductsWithDetails(branchId!),
+        enabled:  Boolean(branchId),
+    });
+}
+
+export function useLowStockProducts(branchId: string | null) {
+    return useQ({
+        queryKey: ['inventory', 'products', 'low-stock', branchId],
+        queryFn:  () => getLowStockProducts(branchId!),
+        enabled:  Boolean(branchId),
+    });
+}
+
+export function useImportProducts() {
+    const qc = useQC();
+    return useMut({
+        mutationFn: ({
+            rows,
+            branchId,
+            userId,
+        }: {
+            rows: ProductImportRow[];
+            branchId: string;
+            userId: string;
+        }) => importProductsFromRows(rows, branchId, userId),
+        onSuccess: (result) => {
+            qc.invalidateQueries({ queryKey: ['products'] });
+            qc.invalidateQueries({ queryKey: ['inventory', 'products'] });
+            qc.invalidateQueries({ queryKey: categoryKeys.all });
+            const errors = result.errors.length > 0 ? `, ${result.errors.length} errors` : '';
+            toast.success(
+                `Import complete: ${result.created} created, ${result.updated} updated${errors}`
+            );
+        },
+        onError: (e: Error) => toast.error(`Import failed: ${e.message}`),
+    });
+}
