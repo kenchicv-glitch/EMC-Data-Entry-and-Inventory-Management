@@ -15,7 +15,7 @@ export interface DscPurchaseItem {
   batch: 1 | 2 | 3;
   description: string;
   amount: number;
-  sort_order: number;
+  sort_order?: number;
   created_at: string;
 }
 
@@ -30,7 +30,7 @@ export interface DscInvoiceItem {
   unit_price: number;
   is_cancelled: boolean;
   reference_id: string | null;
-  sort_order: number;
+  sort_order?: number;
   created_at: string;
   // computed
   amount?: number; // qty * unit_price
@@ -45,7 +45,7 @@ export interface DscDrItem {
   description: string;
   unit_price: number;
   reference_id: string | null;
-  sort_order: number;
+  sort_order?: number;
   created_at: string;
   amount?: number;
 }
@@ -57,7 +57,7 @@ export interface DscOtsItem {
   description: string;
   unit_price: number;
   reference_id: string | null;
-  sort_order: number;
+  sort_order?: number;
   created_at: string;
   amount?: number;
 }
@@ -69,7 +69,7 @@ export interface DscExpenseEntry {
   amount: number;
   category: 'general' | 'salary';
   reference_id?: string;
-  sort_order: number;
+  sort_order?: number;
   created_at: string;
 }
 
@@ -83,7 +83,7 @@ export interface DscReturnEntry {
   amount: number;
   reason: string | null;
   reference_id?: string;
-  sort_order: number;
+  sort_order?: number;
   created_at: string;
 }
 
@@ -95,7 +95,7 @@ export interface DscSalaryEntry {
   days_worked: number | null;
   amount: number;
   note: string | null;
-  sort_order: number;
+  sort_order?: number;
   created_at: string;
 }
 
@@ -109,7 +109,7 @@ export interface DscArEntry {
   dr_number: string | null;
   amount: number;
   reference_id: string | null;
-  sort_order: number;
+  sort_order?: number;
   created_at: string;
 }
 
@@ -147,7 +147,7 @@ export interface DscSiSummary {
   si_range_start: string | null;
   si_range_end: string | null;
   total: number;
-  sort_order: number;
+  sort_order?: number;
   created_at: string;
 }
 

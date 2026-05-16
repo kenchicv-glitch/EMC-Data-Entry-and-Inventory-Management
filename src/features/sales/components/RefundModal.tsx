@@ -129,9 +129,11 @@ export default function RefundModal({ isOpen, onClose, onSuccess }: RefundModalP
                 unit_price: item.unitPrice,
                 total_price: item.totalPrice,
                 vat_amount: isVatEnabled ? (item.totalPrice - (item.totalPrice / 1.12)) : 0,
-                user_id: user?.id,
+                discount_amount: 0,
+                is_discounted: false,
+                user_id: user?.id ?? null,
                 date: date,
-                branch_id: activeBranchId
+                branch_id: activeBranchId || ''
             }));
 
             const insertedData = await salesService.createRefund(refundRecords);

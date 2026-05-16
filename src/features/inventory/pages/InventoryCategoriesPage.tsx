@@ -2,14 +2,14 @@ import { useState, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
     Folder, Plus, Pencil, Trash2, ChevronRight, Tag, ArrowLeft, 
-    Zap, CheckCircle, AlertTriangle, Loader2, LayoutGrid, ListTree,
+    LayoutGrid, ListTree,
     Search
 } from 'lucide-react';
 import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, useCategoryTree, useCategoryProductCounts } from '../hooks/useCategories';
 import CategoryFormModal from '../components/CategoryFormModal';
 import CategoryTreeComponent from '../components/CategoryTree';
 import type { Category } from '../types/product';
-import { type MigrationResult } from '../services/categoryService';
+
 import { useBranch } from '../../../shared/hooks/useBranch';
 import { clsx } from 'clsx';
 
@@ -201,64 +201,6 @@ export default function InventoryCategoriesPage() {
                 {/* Body Content */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 pb-10">
                     
-                    {/* ──── MIGRATION VIEW ──── */}
-                    {selectedMasterId === 'migration' && (
-                        <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-                             <div className="bg-amber-500/5 border border-amber-500/20 rounded-3xl p-8 text-center max-w-2xl mx-auto space-y-6">
-                                <div className="w-16 h-16 bg-amber-500 rounded-3xl flex items-center justify-center mx-auto shadow-amber">
-                                    <Zap size={32} className="text-white" />
-                                </div>
-                                <div>
-                                    <h3 className="text-xl font-black text-text-primary">Inventory Structure Migration</h3>
-                                    <p className="text-sm text-text-secondary mt-2 leading-relaxed">
-                                        This process scans all products for legacy "string-path" names (e.g., <span className="font-mono text-brand-red bg-red-500/5 px-1 rounded">STEEL &gt; BARS &gt; 10mm</span>) 
-                                        and automatically converts them into clean names with direct relational category links.
-                                    </p>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
-                                    <div className="bg-bg-surface/50 border border-border-default rounded-2xl p-4">
-                                        <p className="text-[10px] font-black uppercase text-amber-600 mb-1">Impact</p>
-                                        <p className="text-xs text-text-secondary">Normalizes hierarchy for 3-level depth reporting and high-speed filtering.</p>
-                                    </div>
-                                    <div className="bg-bg-surface/50 border border-border-default rounded-2xl p-4">
-                                        <p className="text-[10px] font-black uppercase text-text-muted mb-1">Safety</p>
-                                        <p className="text-xs text-text-secondary">Original full paths are preserved in the SKU field as historical references.</p>
-                                    </div>
-                                </div>
-
-                                {migrationResult && (
-                                    <div className={clsx(
-                                        "rounded-2xl p-4 text-left border animate-in fade-in duration-500",
-                                        migrationResult.errors.length === 0 ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-700' : 'bg-red-500/5 border-red-500/20 text-red-700'
-                                    )}>
-                                        <div className="flex items-center gap-3 font-black">
-                                            {migrationResult.errors.length === 0 ? <CheckCircle size={20} /> : <AlertTriangle size={20} />}
-                                            <span className="text-sm uppercase tracking-wide">Migration Complete</span>
-                                        </div>
-                                        <div className="mt-3 flex gap-6 text-xs font-bold opacity-80">
-                                            <span>MIGRATED: {migrationResult.migrated}</span>
-                                            <span>SKIPPED: {migrationResult.skipped}</span>
-                                            <span>ERRORS: {migrationResult.errors.length}</span>
-                                        </div>
-                                        {migrationResult.errors.length > 0 && (
-                                            <div className="mt-3 p-3 bg-red-500/10 rounded-xl max-h-32 overflow-y-auto">
-                                                {migrationResult.errors.map((e, i) => <p key={i} className="text-[10px] font-mono text-red-600 mb-1 leading-normal">• {e}</p>)}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                <button
-                                    onClick={handleRunMigration}
-                                    disabled={isMigrating}
-                                    className="w-full py-4 rounded-2xl bg-amber-500 text-white font-black uppercase tracking-widest hover:bg-amber-600 transition-all shadow-amber-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3"
-                                >
-                                    {isMigrating ? <><Loader2 className="animate-spin" /> MIGRATING DATA...</> : <><Zap size={18} /> RUN GLOBAL MIGRATION</>}
-                                </button>
-                             </div>
-                        </div>
-                    )}
 
                     {/* ──── OVERVIEW / GRID VIEW ──── */}
                     {(selectedMasterId === 'all' || !selectedMaster) && (

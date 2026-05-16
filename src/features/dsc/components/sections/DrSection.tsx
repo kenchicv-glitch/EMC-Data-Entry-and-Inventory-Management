@@ -41,7 +41,7 @@ export function DrSection({ dayId, branchId, readOnly = false }: Props) {
     const groups: Record<string, { rows: (Row & { originalIndex: number })[], total: number, account: string, drNo: string }> = {};
     rows.forEach((row, index) => {
       const key = `${row.account_name}-${row.dr_number}-${!!row.reference_id}` || 'MANUAL';
-      if (!groups[key]) groups[key] = { rows: [], total: 0, account: row.account_name, drNo: row.dr_number, isSynced: !!row.reference_id };
+      if (!groups[key]) groups[key] = { rows: [], total: 0, account: row.account_name, drNo: row.dr_number };
       groups[key].rows.push({ ...row, originalIndex: index });
       groups[key].total += (row.qty || 0) * (row.unit_price || 0);
     });

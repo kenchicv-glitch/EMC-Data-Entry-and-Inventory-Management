@@ -87,7 +87,7 @@ export default function AdminPricelist() {
         load();
     }, [fetchData]);
 
-    const handleSavePrice = async (id: string, field: 'srp' | 'wsp' | 'trigger') => {
+    const handleSavePrice = async (id: string, field: 'srp' | 'wsp' | 'trigger' | 'stock') => {
         if (role !== 'owner') {
             setMessage({ type: 'error', text: 'You do not have permission to modify prices.' });
             return;

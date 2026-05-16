@@ -507,9 +507,9 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                     invoice_number: invoiceNumber,
                     customer_name: currentCustomerName,
                     customer_id: currentCustomerId,
-                    fulfillment_status: 'pickup', // Default to pickup as selection is removed
-                    payment_mode: paymentMode,
-                    user_id: user?.id,
+                    fulfillment_status: 'pickup' as const, // Default to pickup as selection is removed
+                    payment_mode: paymentMode as any,
+                    user_id: user?.id ?? null,
                     vat_amount: finalVatAmount * itemRatio,
                     discount_amount: finalDiscountAmount * itemRatio,
                     is_discounted: isDiscountEnabled,
@@ -520,9 +520,10 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                     or_number: sanitizedOrNumber,
                     invoice_type: isOs ? null : invoiceType,
                     net_amount: (item.total_price - (finalVatAmount * itemRatio)),
-                    branch_id: activeBranchId,
+                    branch_id: activeBranchId || '',
                     transaction_label: sanitizeString(transactionLabel),
-                    ...(originalDate ? { date: originalDate, edited_at: new Date().toISOString() } : {})
+                    date: originalDate || new Date().toISOString().split('T')[0],
+                    edited_at: originalDate ? new Date().toISOString() : null
                 };
 
             });

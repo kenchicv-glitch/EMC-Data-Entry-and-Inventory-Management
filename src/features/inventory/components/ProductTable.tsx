@@ -68,20 +68,20 @@ export default function ProductTable({
         for (const p of products) {
             const displaySku = computeDisplaySku(p);
             if (!displaySku) {
-                map.set(p.id, '');
+                map.set(p.id || '', '');
                 continue;
             }
 
             // If it's already a clean SKU from the DB, use as-is
             if (p.sku && !p.sku.includes(' > ')) {
-                map.set(p.id, p.sku);
+                map.set(p.id || '', p.sku || '');
                 continue;
             }
 
             // Assign sequence number based on prefix grouping
             const count = (prefixCounters.get(displaySku) || 0) + 1;
             prefixCounters.set(displaySku, count);
-            map.set(p.id, `${displaySku}-${String(count).padStart(3, '0')}`);
+            map.set(p.id || '', `${displaySku}-${String(count).padStart(3, '0')}`);
         }
         return map;
     }, [products]);
@@ -91,7 +91,7 @@ export default function ProductTable({
             id: 'sku',
             header: 'SKU',
             size: 180,
-            accessorFn: row => skuMap.get(row.id) || '',
+            accessorFn: row => skuMap.get(row.id || '') || '',
             cell: info => {
                 const sku = info.getValue() as string;
                 if (!sku) {
