@@ -3,12 +3,9 @@ import type { Product } from './types/product';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../shared/lib/supabase';
 import { useAuth } from '../../shared/hooks/useAuth';
-import { 
-    ArrowLeft, Package, Search, 
-    Filter, Plus, Edit, Trash2,
-    ChevronDown
-} from 'lucide-react';
+import { Package, Search, Filter, Plus, Edit, Trash2, ChevronDown, ArrowLeft } from 'lucide-react';
 import ProductModal from './components/ProductModal';
+import { productService } from './services/productService';
 
 
 export default function BranchInventoryDetail() {
@@ -35,13 +32,8 @@ export default function BranchInventoryDetail() {
             if (branch) setBranchName(branch.name);
 
             // Fetch Branch Products
-            const { data: productsData } = await supabase
-                .from('products')
-                .select('*')
-                .eq('branch_id', branchId)
-                .order('name');
-            
-            setProducts(productsData || []);
+            const data = await productService.getAll(branchId);
+            setProducts(data || []);
         } catch (err) {
             console.error('Error fetching branch details:', err);
         } finally {
@@ -107,18 +99,59 @@ export default function BranchInventoryDetail() {
         const searchTerms = searchTerm.toLowerCase().split(' ').filter(Boolean);
         const matchesSearch = searchTerms.every(term => 
             p.name.toLowerCase().includes(term) || 
-            (p.brand?.toLowerCase().includes(term) ?? false)
+            (p.brand?.toLowerCase().includes(term) ?? false) ||
+            p.sku?.toLowerCase().includes(term)
         );
-        const category = p.name.split(' > ')[0] || 'Uncategorized';
-        const matchesCategory = categoryFilter === 'All' || category === categoryFilter;
+
+        // Category resolution for filtering
+        let master = 'UNCATEGORIZED';
+        const cat = (p as any).category;
+        if (cat) {
+            // New hierarchy
+            if (cat.depth === 2 && cat.parent?.parent) master = cat.parent.parent.name;
+            else if (cat.depth === 1 && cat.parent) master = cat.parent.name;
+            else master = cat.name;
+        } else if (p.name.includes(' > ')) {
+            // Legacy path
+            master = p.name.split(' > ')[0];
+        }
+
+        const matchesCategory = categoryFilter === 'All' || master.toUpperCase() === categoryFilter.toUpperCase();
         return matchesSearch && matchesCategory;
     });
 
     const groupedProducts = filtered.reduce((acc: Record<string, Record<string, Record<string, Product[]>>>, p) => {
-        const parts = p.name.split(' > ');
-        const master = parts[0] || 'UNCATEGORIZED';
-        const category = parts[1] || 'GENERAL';
-        const subCat = parts[2] || 'GENERAL';
+        let master = 'UNCATEGORIZED';
+        let category = 'GENERAL';
+        let subCat = 'GENERAL';
+
+        const cat = (p as any).category;
+        if (cat) {
+            // Post-migration: Use joined category objects
+            if (cat.depth === 2 && cat.parent?.parent) {
+                master = cat.parent.parent.name;
+                category = cat.parent.name;
+                subCat = cat.name;
+            } else if (cat.depth === 1 && cat.parent) {
+                master = cat.parent.name;
+                category = cat.name;
+                subCat = 'GENERAL';
+            } else {
+                master = cat.name;
+                category = 'GENERAL';
+                subCat = 'GENERAL';
+            }
+        } else if (p.name.includes(' > ')) {
+            // Pre-migration: Legacy name-based path
+            const parts = p.name.split(' > ');
+            master = parts[0] || 'UNCATEGORIZED';
+            category = parts[1] || 'GENERAL';
+            subCat = parts[2] || 'GENERAL';
+        }
+
+        master = master.toUpperCase();
+        category = category.toUpperCase();
+        subCat = subCat.toUpperCase();
         
         if (!acc[master]) acc[master] = {};
         if (!acc[master][category]) acc[master][category] = {};
@@ -134,6 +167,23 @@ export default function BranchInventoryDetail() {
         else newExpanded.add(cat);
         setExpandedCategories(newExpanded);
     };
+
+    // Auto-expand logic for search
+    useEffect(() => {
+        if (searchTerm.trim() !== '') {
+            const newExpanded = new Set<string>();
+            Object.keys(groupedProducts).forEach(master => {
+                newExpanded.add(master);
+                Object.keys(groupedProducts[master]).forEach(cat => {
+                    newExpanded.add(`${master} > ${cat}`);
+                    Object.keys(groupedProducts[master][cat]).forEach(sub => {
+                        newExpanded.add(`${master} > ${cat} > ${sub}`);
+                    });
+                });
+            });
+            setExpandedCategories(newExpanded);
+        }
+    }, [searchTerm, products.length]); // Re-run when products load or search changes
 
     if (loading && branchName === '') {
         return (

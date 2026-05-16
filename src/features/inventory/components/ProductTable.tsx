@@ -12,6 +12,38 @@ import {
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Product } from '../types/product';
 import LowStockBadge from './LowStockBadge';
+import { isSmartMatch } from '../../../shared/lib/searchUtils';
+import { buildSkuPrefix, extractSize } from '../../../shared/lib/skuGenerator';
+
+// ── Helper: resolve category hierarchy from product ─────────────
+function resolveHierarchy(product: Product): { master: string; subcat: string } {
+    const cat = product.category;
+    if (cat) {
+        if (cat.depth === 2 && cat.parent?.parent) {
+            return { master: cat.parent.parent.name || '', subcat: cat.name || '' };
+        } else if (cat.depth === 1 && cat.parent) {
+            return { master: cat.parent.name || '', subcat: cat.name || '' };
+        } else {
+            return { master: cat.name || '', subcat: '' };
+        }
+    }
+    // Legacy: extract from breadcrumb name
+    const parts = product.name.split(' > ');
+    return { master: parts[0] || 'MISC', subcat: parts.length > 2 ? parts[2] : '' };
+}
+
+// ── Helper: compute display SKU on-the-fly ──────────────────────
+function computeDisplaySku(product: Product): string | null {
+    // If already has a clean (non-breadcrumb) SKU, use it directly
+    if (product.sku && !product.sku.includes(' > ')) return product.sku;
+
+    // Otherwise, compute a preview from the product's category/brand/name
+    const { master, subcat } = resolveHierarchy(product);
+    if (!master || master === 'UNCATEGORIZED') return null;
+
+    const prefix = buildSkuPrefix(master, subcat || undefined, product.brand || undefined, product.name);
+    return prefix; // Show prefix without sequence (sequence requires DB lookup)
+}
 
 interface ProductTableProps {
     products: Product[];
@@ -28,15 +60,47 @@ export default function ProductTable({
 }: ProductTableProps) {
     const [sorting, setSorting] = useState<SortingState>([]);
 
+    // Pre-compute display SKUs with sequence numbers per prefix group
+    const skuMap = useMemo(() => {
+        const map = new Map<string, string>();
+        const prefixCounters = new Map<string, number>();
+
+        for (const p of products) {
+            const displaySku = computeDisplaySku(p);
+            if (!displaySku) {
+                map.set(p.id, '');
+                continue;
+            }
+
+            // If it's already a clean SKU from the DB, use as-is
+            if (p.sku && !p.sku.includes(' > ')) {
+                map.set(p.id, p.sku);
+                continue;
+            }
+
+            // Assign sequence number based on prefix grouping
+            const count = (prefixCounters.get(displaySku) || 0) + 1;
+            prefixCounters.set(displaySku, count);
+            map.set(p.id, `${displaySku}-${String(count).padStart(3, '0')}`);
+        }
+        return map;
+    }, [products]);
+
     const columns = useMemo<ColumnDef<Product>[]>(() => [
         {
             id: 'sku',
-            accessorKey: 'sku',
             header: 'SKU',
-            size: 120,
-            cell: info => (
-                <span className="font-mono text-xs text-text-muted">{info.getValue() as string}</span>
-            ),
+            size: 180,
+            accessorFn: row => skuMap.get(row.id) || '',
+            cell: info => {
+                const sku = info.getValue() as string;
+                if (!sku) {
+                    return <span className="text-[10px] text-text-muted italic">—</span>;
+                }
+                return (
+                    <span className="font-mono text-[10px] font-bold text-brand-red/80 tracking-wider whitespace-nowrap">{sku}</span>
+                );
+            },
         },
         {
             id: 'name',
@@ -137,7 +201,7 @@ export default function ProductTable({
                 <span className="text-xs text-text-muted">{(info.getValue() as string) ?? '—'}</span>
             ),
         },
-    ], []);
+    ], [skuMap]);
 
     const table = useReactTable({
         data: products,
@@ -149,7 +213,25 @@ export default function ProductTable({
         getFilteredRowModel: getFilteredRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
         initialState: { pagination: { pageSize: 50 } },
-        globalFilterFn: 'includesString',
+        globalFilterFn: (row, _columnId, filterValue) => {
+            const p = row.original;
+            
+            // Build a searchable string (index) similar to Sales UI
+            const cat = p.category;
+            let path = '';
+            if (cat) {
+                const names = [cat.name];
+                let curr = cat;
+                while (curr.parent) {
+                    names.unshift(curr.parent.name);
+                    curr = curr.parent;
+                }
+                path = names.join(' > ');
+            }
+            
+            const searchIndex = `${p.name} ${p.sku || ''} ${p.brand || ''} ${p.variant_type || ''} ${p.size || ''} ${path}`.toLowerCase();
+            return isSmartMatch(searchIndex, filterValue);
+        },
     });
 
     if (isLoading) {

@@ -39,6 +39,7 @@ export interface InventoryStats {
 export interface InventorySnap {
     id: string;
     name: string;
+    sku?: string;
     opening: number;
     inwards: number;
     outwards: number;
@@ -301,6 +302,7 @@ export class ReportService {
             return {
                 id: p.id,
                 name: p.name,
+                sku: p.sku,
                 opening,
                 inwards,
                 outwards,

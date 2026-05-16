@@ -232,6 +232,16 @@ const Sidebar = ({
                 </div>
             )}
 
+            {currentWorkspace === 'dsc' && (
+                <div className="space-y-1">
+                    <p className="px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">Daily Sales & Collection</p>
+                    <div className="space-y-1 mt-1 animate-slide-up">
+                        <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/dsc" label="Daily Entry" icon={ClipboardList} end={true} onClick={() => setIsSidebarOpen(false)} />
+                        <SidebarLink restrictedPaths={restrictedPaths} canAccessMaster={canAccessMaster} to="/dsc/summary" label="Monthly Summary" icon={FileBarChart} onClick={() => setIsSidebarOpen(false)} />
+                    </div>
+                </div>
+            )}
+
         </nav>
 
         <div className="px-4 py-6 border-t border-white/5 bg-black/20">

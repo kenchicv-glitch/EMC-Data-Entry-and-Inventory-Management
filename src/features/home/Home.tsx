@@ -7,7 +7,8 @@ import {
     ShieldCheck,
     FileBarChart,
     ArrowRight,
-    LogOut
+    LogOut,
+    ClipboardList
 } from 'lucide-react';
 import logo from '../../assets/brand-logo.png';
 
@@ -124,6 +125,15 @@ export default function Home() {
                             delay="0.2s"
                         />
                     )}
+                    <WorkspaceTile
+                        id="dsc"
+                        title="Daily Sales"
+                        subtitle="DSC Sheet & Collections"
+                        icon={ClipboardList}
+                        gradient="from-brand-red to-brand-red/80"
+                        onClick={handleSelectWorkspace}
+                        delay="0.3s"
+                    />
                 </div>
 
                 {/* Footer / User Profile */}

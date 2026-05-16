@@ -271,7 +271,12 @@ export default function DailyInventorySummary() {
                                                 <td className="px-8 py-5">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-8 h-8 rounded-lg bg-subtle flex items-center justify-center text-text-muted group-hover:text-brand-red transition-colors"><Package size={14} /></div>
-                                                        <p className="text-xs font-black text-text-primary leading-tight uppercase">{item.name}</p>
+                                                        <div>
+                                                            <p className="text-xs font-black text-text-primary leading-tight uppercase">{item.name}</p>
+                                                            {item.sku && item.sku !== item.name && !item.sku.includes(' > ') && (
+                                                                <p className="text-[9px] font-mono text-brand-red/60 font-bold tracking-tighter mt-0.5 truncate max-w-[200px]">{item.sku}</p>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-5 text-center font-bold text-text-muted">{item.opening}</td>

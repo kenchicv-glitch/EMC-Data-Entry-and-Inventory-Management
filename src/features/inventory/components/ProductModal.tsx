@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Product } from '../types/product';
 import { createPortal } from 'react-dom';
-import { X, Package, AlertTriangle, Info, Tag, DollarSign, Building2, Eye, Truck } from 'lucide-react';
+import { X, Package, AlertTriangle, Info, Tag, DollarSign, Building2, Eye, Truck, Pencil, Lock } from 'lucide-react';
 import { useBranch } from '../../../shared/hooks/useBranch';
 import CategoryRenameModal from './CategoryRenameModal';
 import { encodePrice } from '../../../shared/lib/priceCodes';
@@ -9,6 +9,8 @@ import { useProducts } from '../hooks/useProducts';
 import { useSuppliers } from '../../suppliers/hooks/useSuppliers';
 import { inferUnitFromName } from '../../../shared/lib/unitUtils';
 import { sanitizeString } from '../../../shared/lib/sanitize';
+import { getAllCategories, resolveCategoryPath } from '../services/categoryService';
+import { buildSkuPrefix, getNextSequence, generateSku, extractSize, extractVariantType } from '../../../shared/lib/skuGenerator';
 
 
 
@@ -48,6 +50,10 @@ export default function ProductModal(props: ProductModalProps) {
 
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [skuOverride, setSkuOverride] = useState(false);
+    const [manualSku, setManualSku] = useState('');
+    const [variantType, setVariantType] = useState('');
+    const [sizeField, setSizeField] = useState('');
 
     const [renameState, setRenameState] = useState<{ isOpen: boolean; currentName: string; level: 1 | 2 | 3 | null }>({
         isOpen: false,
@@ -79,52 +85,66 @@ export default function ProductModal(props: ProductModalProps) {
         if (!isOpen) return;
         setHasChanged(false);
         setError(null);
+        setSkuOverride(false);
+        setManualSku('');
         if (product) {
             setFormData({
                 ...product,
-                brand: product.brand || '',
-                description: product.description || '',
-                buying_price: product.buying_price || 0,
-                selling_price: product.selling_price || 0,
-                unit: product.unit || 'pc',
+                brand:               product.brand || '',
+                description:         product.description || '',
+                buying_price:        product.buying_price || 0,
+                selling_price:       product.selling_price || 0,
+                unit:                product.unit || 'pc',
                 low_stock_threshold: product.low_stock_threshold || 10
             });
+            setVariantType(product.variant_type || '');
+            setSizeField(product.size || '');
+
+            // Populate l1/l2/l3/l4 from category hierarchy (post-migration)
+            // or from the legacy name path (pre-migration)
+            const cat = (product as any).category;
             const name = product.name || '';
-            if (name.includes(' > ')) {
+
+            if (cat && !name.includes(' > ')) {
+                // Post-migration: category object attached, name is clean
+                setL4(name);
+                if (cat.depth === 2 && cat.parent?.parent) {
+                    setL1((cat.parent.parent.name as string).toUpperCase());
+                    setL2((cat.parent.name as string).toUpperCase());
+                    setL3((cat.name as string).toUpperCase());
+                } else if (cat.depth === 1 && cat.parent) {
+                    setL1((cat.parent.name as string).toUpperCase());
+                    setL2((cat.name as string).toUpperCase());
+                    setL3('');
+                } else {
+                    setL1((cat.name as string).toUpperCase());
+                    setL2(''); setL3('');
+                }
+            } else if (name.includes(' > ')) {
+                // Pre-migration: path encoded in name
                 const parts = name.split(' > ');
                 setL1(parts[0] || '');
                 setL2(parts[1] || '');
                 setL3(parts[2] || '');
-                setL4(parts[3] || '');
+                setL4(parts[3] || parts.slice(-1)[0] || '');
             } else if (name.includes(' - ')) {
-                const [cat, type] = name.split(' - ');
-                setL1('UNCATEGORIZED');
-                setL2(cat || '');
-                setL3('');
-                setL4(type || '');
+                const [cat2, type] = name.split(' - ');
+                setL1('UNCATEGORIZED'); setL2(cat2 || ''); setL3(''); setL4(type || '');
             } else {
-                setL1('UNCATEGORIZED');
-                setL2('');
-                setL3('');
-                setL4(name);
+                setL1('UNCATEGORIZED'); setL2(''); setL3(''); setL4(name);
             }
         } else {
             setFormData({
-                name: '',
-                stock_available: 0,
-                stock_reserved: 0,
-                stock_damaged: 0,
-                brand: '',
-                description: '',
-                buying_price: 0,
-                selling_price: 0,
-                unit: 'pc',
-                low_stock_threshold: 10
+                name: '', stock_available: 0, stock_reserved: 0, stock_damaged: 0,
+                brand: '', description: '', buying_price: 0, selling_price: 0,
+                unit: 'pc', low_stock_threshold: 10
             });
             setL1(props.initialData?.l1 || '');
             setL2(props.initialData?.l2 || '');
             setL3(props.initialData?.l3 || '');
             setL4('');
+            setVariantType('');
+            setSizeField('');
         }
     }, [product, isOpen, props.initialData]);
 
@@ -139,7 +159,30 @@ export default function ProductModal(props: ProductModalProps) {
                 setFormData(prev => ({ ...prev, unit: inferred }));
             }
         }
+
+        // Auto-extract size and variant from product name
+        if (l4.trim()) {
+            const autoSize = extractSize(l4);
+            if (autoSize && !sizeField) setSizeField(autoSize);
+            const autoVariant = extractVariantType(l4);
+            if (autoVariant && !variantType) setVariantType(autoVariant);
+        }
     }, [l1, l2, l3, l4, isOpen]);
+
+    // Compute auto-generated SKU preview
+    const skuPreview = useMemo(() => {
+        if (!l1.trim()) return '';
+        const prefix = buildSkuPrefix(l1.trim(), l2.trim() || undefined, formData.brand || undefined, l4.trim() || undefined);
+        const existingSkus = products.map(p => p.sku).filter(Boolean);
+        const seq = getNextSequence(existingSkus, prefix);
+        return generateSku({
+            masterCategory: l1.trim(),
+            subCategory: l2.trim() || undefined,
+            brand: formData.brand || undefined,
+            size: l4.trim() ? extractSize(l4.trim()) || undefined : undefined,
+            sequenceNumber: seq,
+        });
+    }, [l1, l2, l4, formData.brand, products]);
 
     const [hasChanged, setHasChanged] = useState(false);
 
@@ -161,43 +204,71 @@ export default function ProductModal(props: ProductModalProps) {
         setIsSaving(true);
         setError(null);
         try {
-            const parts = [l1?.trim(), l2?.trim(), l3?.trim(), l4?.trim()].filter(p => p && p !== '');
-            const finalName = sanitizeString(parts.join(' > ').toUpperCase());
+            // ── Category resolution ───────────────────────────────────────
+            const categoryParts = [l1?.trim(), l2?.trim(), l3?.trim()].filter(p => p && p !== '');
+            const categoryPath  = categoryParts.join(' > ').toUpperCase();
+
+            // Clean product name = l4 if provided, else last category part (backward compat)
+            const cleanName = l4?.trim() || (categoryParts.length > 0 ? categoryParts[categoryParts.length - 1] : '');
+            const finalName = sanitizeString(cleanName.toUpperCase());
 
             if (!finalName) throw new Error('Product name cannot be empty');
 
-            // PRICE VALIDATION
-            if (formData.buying_price === 0) throw new Error('WSP (Buying Price) is required and cannot be 0.');
-            if (formData.selling_price === 0) throw new Error('SRP (Selling Price) is required and cannot be 0.');
-            if (formData.buying_price === formData.selling_price) throw new Error('WSP and SRP cannot be the same. There must be a profit margin.');
-            if ((formData.buying_price || 0) > (formData.selling_price || 0)) {
-                throw new Error(`Invalid Pricing: Buying Price (₱${formData.buying_price}) cannot be higher than Selling Price (₱${formData.selling_price}). This would result in a loss.`);
-            }
-
-            // DUPLICATE DETECTION (Only for new products)
-            if (!isEditing) {
-                const isDuplicate = products.some(p => p.name.toUpperCase() === finalName);
-                if (isDuplicate) {
-                    throw new Error(`Product "${finalName}" already exists in this branch. Please use a unique name or edit the existing product.`);
+            // Resolve or create category hierarchy
+            let categoryId: string | null = (product as any)?.category_id ?? null;
+            if (categoryPath) {
+                try {
+                    const allCats = await getAllCategories();
+                    categoryId = await resolveCategoryPath(categoryPath, allCats);
+                } catch (catErr) {
+                    console.warn('Category resolution failed — saving without category:', catErr);
                 }
             }
 
-            const payload = {
-                name: finalName,
-                sku: finalName,
-                stock_available: formData.stock_available || 0,
-                stock_reserved: formData.stock_reserved || 0,
-                stock_damaged: formData.stock_damaged || 0,
-                brand: sanitizeString(formData.brand),
-                description: sanitizeString(formData.description),
-                buying_price: formData.buying_price || 0,
-                selling_price: formData.selling_price || 0,
-                unit: sanitizeString(formData.unit) || 'pc',
-                low_stock_threshold: formData.low_stock_threshold || 10,
-                supplier_id: formData.supplier_id || null,
-                branch_id: activeBranchId || null
-            } as any;
+            // ── Price validation ──────────────────────────────────────────
+            if (formData.buying_price === 0) throw new Error('WSP (Buying Price) is required and cannot be 0.');
+            if (formData.selling_price === 0) throw new Error('SRP (Selling Price) is required and cannot be 0.');
+            if (formData.buying_price === formData.selling_price) throw new Error('WSP and SRP cannot be the same.');
+            if ((formData.buying_price || 0) > (formData.selling_price || 0)) {
+                throw new Error(`Invalid Pricing: Buying Price (₱${formData.buying_price}) cannot exceed Selling Price (₱${formData.selling_price}).`);
+            }
 
+            // ── Duplicate detection (new products only) ───────────────────
+            if (!isEditing) {
+                const isDuplicate = products.some(p =>
+                    p.name.toUpperCase() === finalName &&
+                    (p as any).category_id === categoryId
+                );
+                if (isDuplicate) {
+                    throw new Error(`Product "${finalName}" already exists in this category. Use a unique name or edit the existing product.`);
+                }
+            }
+
+            // Generate or override SKU
+            const finalSku = skuOverride && manualSku.trim()
+                ? manualSku.trim().toUpperCase()
+                : (isEditing && product?.sku && !product.sku.includes(' > ')
+                    ? product.sku   // Keep existing reformatted SKU on edit
+                    : skuPreview || finalName);
+
+            const payload = {
+                name:        finalName,
+                sku:         finalSku,
+                category_id: categoryId,
+                variant_type:           sanitizeString(variantType) || null,
+                size:                   sanitizeString(sizeField) || null,
+                stock_available:        formData.stock_available || 0,
+                stock_reserved:         formData.stock_reserved  || 0,
+                stock_damaged:          formData.stock_damaged   || 0,
+                brand:                  sanitizeString(formData.brand),
+                description:            sanitizeString(formData.description),
+                buying_price:           formData.buying_price   || 0,
+                selling_price:          formData.selling_price  || 0,
+                unit:                   sanitizeString(formData.unit) || 'pc',
+                low_stock_threshold:    formData.low_stock_threshold || 10,
+                supplier_id:            formData.supplier_id || null,
+                branch_id:              activeBranchId || null
+            } as any;
 
             if (isEditing && product?.id) {
                 await updateProduct({ id: product.id, product: payload });
@@ -249,8 +320,66 @@ export default function ProductModal(props: ProductModalProps) {
                                     <input type="text" list="l3-options" className="modal-input text-xs bg-surface border border-border-default text-text-primary rounded-xl px-4 py-2 w-full outline-none focus:ring-2 focus:ring-brand-red/20" value={l3} onChange={e => { setL3(e.target.value.toUpperCase()); setHasChanged(true); }} />
                                     <datalist id="l3-options">{choices.l3s.map(c => <option key={c} value={c} />)}</datalist>
                                 </div>
-                                <div><label className="block text-[9px] font-black uppercase text-text-primary mb-1.5">Details / Size <span className="text-text-muted font-normal normal-case">(optional)</span></label><input type="text" className="modal-input text-xs bg-surface border border-border-default text-text-primary rounded-xl px-4 py-2 w-full outline-none focus:ring-2 focus:ring-brand-red/20" value={l4} onChange={e => { setL4(e.target.value.toUpperCase()); setHasChanged(true); }} /></div>
+                                <div><label className="block text-[9px] font-black uppercase text-text-primary mb-1.5">Product Name <span className="text-brand-red">★</span></label><input type="text" placeholder="e.g. #6 EXPANDED WIRE MESH 4X8" className="modal-input text-xs bg-surface border border-border-default text-text-primary rounded-xl px-4 py-2 w-full outline-none focus:ring-2 focus:ring-brand-red/20" value={l4} onChange={e => { setL4(e.target.value.toUpperCase()); setHasChanged(true); }} /></div>
 
+                            </div>
+
+                            {/* SKU Preview + Override */}
+                            <div className="mt-2 p-3 bg-surface rounded-xl border border-border-default">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="text-[9px] font-black uppercase text-text-primary flex items-center gap-1.5">
+                                        {skuOverride ? <Pencil size={10} /> : <Lock size={10} />}
+                                        SKU {skuOverride ? '(Manual)' : '(Auto-Generated)'}
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setSkuOverride(!skuOverride); if (!skuOverride) setManualSku(skuPreview); }}
+                                        className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border transition-all ${
+                                            skuOverride
+                                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 hover:bg-amber-500/20'
+                                                : 'bg-subtle border-border-default text-text-muted hover:text-text-primary'
+                                        }`}
+                                    >
+                                        {skuOverride ? 'Use Auto' : 'Override'}
+                                    </button>
+                                </div>
+                                {skuOverride ? (
+                                    <input
+                                        type="text"
+                                        className="modal-input text-xs font-mono bg-amber-500/5 border border-amber-500/20 text-text-primary rounded-lg px-3 py-2 w-full outline-none focus:ring-2 focus:ring-amber-500/30"
+                                        value={manualSku}
+                                        onChange={e => { setManualSku(e.target.value.toUpperCase()); setHasChanged(true); }}
+                                        placeholder="Enter custom SKU..."
+                                    />
+                                ) : (
+                                    <div className="font-mono text-sm font-bold text-brand-red bg-brand-red/5 border border-brand-red/10 rounded-lg px-3 py-2 tracking-wider">
+                                        {skuPreview || <span className="text-text-muted italic text-xs">Fill category & name to preview</span>}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Variant Type & Size */}
+                            <div className="mt-2 grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[9px] font-black uppercase text-text-secondary mb-1.5">Variant / Type</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. MAKAPAL, MANIPIS"
+                                        className="modal-input text-xs bg-surface border border-border-default text-text-primary rounded-xl px-4 py-2 w-full outline-none focus:ring-2 focus:ring-brand-red/20"
+                                        value={variantType}
+                                        onChange={e => { setVariantType(e.target.value.toUpperCase()); setHasChanged(true); }}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[9px] font-black uppercase text-text-secondary mb-1.5">Size / Dimensions</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. 5.5MM, 1/4X1"
+                                        className="modal-input text-xs bg-surface border border-border-default text-text-primary rounded-xl px-4 py-2 w-full outline-none focus:ring-2 focus:ring-brand-red/20"
+                                        value={sizeField}
+                                        onChange={e => { setSizeField(e.target.value.toUpperCase()); setHasChanged(true); }}
+                                    />
+                                </div>
                             </div>
                         </div>
 

@@ -26,15 +26,26 @@ export default function Login() {
             });
             
             if (error) {
-                toast.error("Invalid credentials. Please try again.");
+                // Supabase returns AuthRetryableFetchError for network issues
+                if (error.message?.toLowerCase().includes('fetch') || error.name === 'AuthRetryableFetchError') {
+                    toast.error("No internet connection. Please check your network and try again.", { duration: 5000 });
+                } else {
+                    toast.error("Invalid credentials. Please try again.");
+                }
                 return;
             }
 
             // Success: profile fetching is handled in AuthContext, which will trigger re-renders
             // Navigation to / or specific role-based route is handled by AppRoutes/Layout effects
             navigate('/');
-        } catch (err) {
-            toast.error("Invalid credentials. Please try again.");
+        } catch (err: any) {
+            // Catch network-level failures (DNS, offline, etc.)
+            const msg = err?.message?.toLowerCase() || '';
+            if (msg.includes('fetch') || msg.includes('network') || !navigator.onLine) {
+                toast.error("No internet connection. Please check your network and try again.", { duration: 5000 });
+            } else {
+                toast.error("Invalid credentials. Please try again.");
+            }
         } finally {
             setLoading(false);
         }

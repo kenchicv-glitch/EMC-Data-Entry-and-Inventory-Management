@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useReactToPrint } from 'react-to-print';
 import {
     Package,
@@ -36,6 +36,7 @@ export default function InventoryPage() {
     const { activeBranchId } = useBranch();
     const { user } = useAuth();
     const location = useLocation();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     // ---- Data ----
     const { data: products = [], isLoading } = useProductsWithDetails(activeBranchId);
@@ -46,7 +47,15 @@ export default function InventoryPage() {
     const importMutation = useImportProducts();
 
     // ---- State ----
-    const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+    const selectedCategoryId = searchParams.get('category');
+    const setSelectedCategoryId = (id: string | null) => {
+        if (id) {
+            searchParams.set('category', id);
+        } else {
+            searchParams.delete('category');
+        }
+        setSearchParams(searchParams);
+    };
     const [search, setSearch] = useState('');
     const [brandFilter, setBrandFilter] = useState('');
     const [locationFilter, setLocationFilter] = useState('');
@@ -60,11 +69,39 @@ export default function InventoryPage() {
         return Array.from(set).sort();
     }, [products]);
 
+    // Helper to get all descendant IDs including the parent itself
+    const selectedCategoryIds = useMemo(() => {
+        if (!selectedCategoryId) return null;
+        
+        const getAllIds = (nodes: any[], targetId: string): string[] => {
+            for (const node of nodes) {
+                if (node.id === targetId) {
+                    const ids = [node.id];
+                    const getChildrenIds = (children: any[]) => {
+                        for (const child of children) {
+                            ids.push(child.id);
+                            if (child.children) getChildrenIds(child.children);
+                        }
+                    };
+                    if (node.children) getChildrenIds(node.children);
+                    return ids;
+                }
+                if (node.children) {
+                    const result = getAllIds(node.children, targetId);
+                    if (result.length > 0) return result;
+                }
+            }
+            return [];
+        };
+
+        return new Set(getAllIds(categoryTree, selectedCategoryId));
+    }, [categoryTree, selectedCategoryId]);
+
     const filteredProducts = useMemo(() => {
         let result = products;
 
-        if (selectedCategoryId) {
-            result = result.filter(p => p.category_id === selectedCategoryId);
+        if (selectedCategoryIds && !search) {
+            result = result.filter(p => p.category_id && selectedCategoryIds.has(p.category_id));
         }
         if (brandFilter) {
             result = result.filter(p => p.brand === brandFilter);

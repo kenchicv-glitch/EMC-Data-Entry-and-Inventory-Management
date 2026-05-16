@@ -1,14 +1,24 @@
 import { supabase } from '../../../shared/lib/supabase';
-import type { Product } from '../../../shared/types';
+import type { Product, Category } from '../types/product';
 import { startOfDay } from 'date-fns';
 import type { RawProductData } from '../../../shared/lib/ExcelImportService';
 import { inferUnitFromName } from '../../../shared/lib/unitUtils';
+import { getAllCategories, resolveCategoryPath } from './categoryService';
 
 export const productService = {
     async getAll(branchId?: string | null): Promise<Product[]> {
         let query = supabase
             .from('products')
-            .select('*')
+            .select(`
+                *,
+                category:inv_categories!category_id(
+                    id, name, depth, parent_id,
+                    parent:inv_categories!parent_id(
+                        id, name, depth, parent_id,
+                        parent:inv_categories!parent_id(id, name, depth)
+                    )
+                )
+            `)
             .order('name');
 
         if (branchId) {
@@ -18,7 +28,7 @@ export const productService = {
         const { data, error } = await query;
 
         if (error) throw error;
-        return data || [];
+        return (data || []) as unknown as Product[];
     },
 
     async getById(id: string): Promise<Product | null> {
@@ -75,56 +85,79 @@ export const productService = {
     async importProducts(activeBranchId: string | null, productsToUpsert: RawProductData[]) {
         if (productsToUpsert.length === 0) return { updates: 0, inserts: 0 };
 
-        // Fetch current products for this branch to check for existing names
-        let existingQuery = supabase.from('products').select('id, name, stock_available');
-        if (activeBranchId) {
-            existingQuery = existingQuery.eq('branch_id', activeBranchId);
+        // Pre-resolve category IDs for structured-format rows (those with a category_path)
+        const hasCategoryPaths = productsToUpsert.some(p => p.category_path);
+        let allCategories: Category[] = [];
+        if (hasCategoryPaths) {
+            allCategories = await getAllCategories();
         }
+
+        const resolveCategoryId = async (path?: string): Promise<string | null> => {
+            if (!path) return null;
+            try {
+                return await resolveCategoryPath(path, allCategories);
+            } catch {
+                return null;
+            }
+        };
+
+        // Fetch current products for this branch to check for existing names
+        let existingQuery = supabase.from('products').select('id, name, sku, stock_available, category_id');
+        if (activeBranchId) existingQuery = existingQuery.eq('branch_id', activeBranchId);
         const { data: existingProducts, error: fetchError } = await existingQuery;
         if (fetchError) throw fetchError;
 
-        const existingMap = new Map();
+        // Build lookup by CLEAN name (post-migration) AND by SKU (which holds old full path)
+        const existingByName = new Map<string, { id: string; stock: number }>();
+        const existingBySku  = new Map<string, { id: string; stock: number }>();
         (existingProducts || []).forEach(p => {
-            const upperName = p.name.toUpperCase();
-            if (existingMap.has(upperName)) {
-                existingMap.get(upperName).stock += (p.stock_available || 0);
-            } else {
-                existingMap.set(upperName, { id: p.id, stock: p.stock_available || 0 });
-            }
+            existingByName.set(p.name.toUpperCase(), { id: p.id, stock: p.stock_available || 0 });
+            if (p.sku) existingBySku.set(p.sku.toUpperCase(), { id: p.id, stock: p.stock_available || 0 });
         });
 
         const consolidateUpload = new Map<string, RawProductData>();
         productsToUpsert.forEach(item => {
             const name = item.name.toUpperCase();
             if (consolidateUpload.has(name)) {
-                const existing = consolidateUpload.get(name)!;
-                existing.stock_available += (item.stock_available || 0);
+                consolidateUpload.get(name)!.stock_available += (item.stock_available || 0);
             } else {
                 consolidateUpload.set(name, { ...item, name });
             }
         });
 
-        const updates = [];
-        const inserts = [];
+        const updates: any[] = [];
+        const inserts: any[] = [];
 
         for (const [name, item] of consolidateUpload) {
-            if (existingMap.has(name)) {
-                const match = existingMap.get(name);
-                const currentStock = match.stock || 0;
-                const finalStock = currentStock < 100 ? 100 : currentStock;
-                
+            // Resolve category_id for structured rows
+            const categoryId = item.category_path
+                ? await resolveCategoryId(item.category_path)
+                : null;
+
+            // Strip non-DB fields before writing
+            const { category_path, location_code, ...dbItem } = item;
+
+            // Check existing by clean name first, then by old SKU path
+            const matchByName = existingByName.get(name);
+            const matchBySku  = !matchByName ? existingBySku.get(item.sku?.toUpperCase() || '') : undefined;
+            const match = matchByName || matchBySku;
+
+            if (match) {
+                const finalStock = Math.max(match.stock, item.stock_available || 100);
                 updates.push({
                     id: match.id,
-                    ...item,
-                    sku: item.sku || name,
-                    stock_available: finalStock
+                    ...dbItem,
+                    sku:             item.sku || name,
+                    stock_available: finalStock,
+                    ...(categoryId ? { category_id: categoryId } : {}),
                 });
             } else {
                 inserts.push({
-                    ...item,
-                    sku: item.sku || name,
-                    stock_available: 100,
-                    branch_id: activeBranchId
+                    ...dbItem,
+                    sku:             item.sku || name,
+                    stock_available: item.stock_available || 100,
+                    branch_id:       activeBranchId,
+                    ...(categoryId ? { category_id: categoryId } : {}),
                 });
             }
         }
@@ -133,7 +166,6 @@ export const productService = {
             const { error: updateError } = await supabase.from('products').upsert(updates, { onConflict: 'id' });
             if (updateError) throw updateError;
         }
-
         if (inserts.length > 0) {
             const { error: insertError } = await supabase.from('products').insert(inserts);
             if (insertError) throw insertError;
@@ -270,7 +302,6 @@ export const productService = {
 // ============================================================
 
 import type { ProductImportRow, ProductImportResult } from '../types/product';
-import { resolveCategoryPath, getAllCategories } from './categoryService';
 import { resolveLocationCode, getAllLocations } from './locationService';
 
 // Products with category + location joined
@@ -279,7 +310,13 @@ export async function getProductsWithDetails(branchId: string) {
         .from('products')
         .select(`
             *,
-            category:inv_categories(id, name, slug, depth, color, parent_id),
+            category:inv_categories(
+                id, name, slug, depth, color, parent_id,
+                parent:inv_categories!parent_id(
+                    id, name, depth, parent_id,
+                    parent:inv_categories!parent_id(id, name, depth)
+                )
+            ),
             location:inv_locations(id, name, code)
         `)
         .eq('branch_id', branchId)

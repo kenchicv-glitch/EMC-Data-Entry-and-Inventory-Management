@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../../../shared/lib/supabase';
 import { X, RotateCcw, Trash2, AlertTriangle, Package } from 'lucide-react';
 import { useBranch } from '../../../shared/hooks/useBranch';
+import { salesService } from '../services/salesService';
 
 interface Product {
     id: string;
@@ -133,11 +134,10 @@ export default function RefundModal({ isOpen, onClose, onSuccess }: RefundModalP
                 branch_id: activeBranchId
             }));
 
-            const { data, error: insertError } = await supabase.from('customer_refunds').insert(refundRecords).select('*, products(name)');
-            if (insertError) throw insertError;
+            const insertedData = await salesService.createRefund(refundRecords);
 
             setTimeout(() => {
-                onSuccess(data as unknown as unknown[]);
+                onSuccess(insertedData as unknown as unknown[]);
                 onClose();
             }, 500);
         } catch (err) {

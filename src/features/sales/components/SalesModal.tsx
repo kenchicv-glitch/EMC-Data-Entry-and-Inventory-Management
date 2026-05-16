@@ -14,6 +14,7 @@ import { isSmartMatch } from '../../../shared/lib/searchUtils';
 import { sanitizeString } from '../../../shared/lib/sanitize';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../../shared/lib/queryKeys';
+import { salesService } from '../services/salesService';
 
 
 interface Product {
@@ -25,6 +26,15 @@ interface Product {
     description?: string;
     buying_price?: number;
     unit?: string;
+    category_id?: string | null;
+    sku?: string | null;
+}
+
+interface Category {
+    id: string;
+    name: string;
+    parent_id: string | null;
+    depth: number;
 }
 
 export interface OrderItem {
@@ -125,6 +135,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
     // Disruptive close logic and draft state removed
 
 
@@ -190,7 +201,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     const fetchProducts = useCallback(async () => {
         const query = supabase
             .from('products')
-            .select('id, name, stock_available, selling_price, brand, description, buying_price, unit')
+            .select('id, name, stock_available, selling_price, brand, description, buying_price, unit, category_id, sku')
             .order('name');
         
         if (activeBranchId) {
@@ -202,6 +213,39 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
         if (error) console.error('Error fetching products:', error);
         else setProducts(data || []);
     }, [activeBranchId]);
+
+    const fetchCategories = useCallback(async () => {
+        try {
+            const { data, error } = await supabase
+                .from('inv_categories')
+                .select('id, name, parent_id, depth');
+            
+            if (error) throw error;
+            if (!data) return;
+
+            const cats = data as Category[];
+            const map: Record<string, string> = {};
+
+            const getName = (id: string | null) => cats.find(c => c.id === id)?.name || '';
+
+            cats.forEach(cat => {
+                let pathParts: string[] = [cat.name];
+                let current = cat;
+                
+                // Traverse up to build path
+                while (current.parent_id) {
+                    const parent = cats.find(c => c.id === current.parent_id);
+                    if (!parent) break;
+                    pathParts.unshift(parent.name);
+                    current = parent;
+                }
+                map[cat.id] = pathParts.join(' > ');
+            });
+            setCategoryMap(map);
+        } catch (err) {
+            console.error('Error fetching categories:', err);
+        }
+    }, []);
 
     const fetchCustomers = useCallback(async () => {
         try {
@@ -270,6 +314,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
     useEffect(() => {
         if (isOpen) {
             fetchProducts();
+            fetchCategories();
             fetchCustomers();
             if (editData) {
                 setInvoiceNumber(editData.invoiceNumber);
@@ -442,8 +487,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
             }
 
             if (editData) {
-                const { error: delError } = await supabase.from('sales').delete().eq('invoice_number', editData.invoiceNumber);
-                if (delError) throw delError;
+                await salesService.deleteByInvoice(editData.invoiceNumber);
             }
 
             const { data: latestProducts } = await supabase.from('products').select('id, name, stock_available');
@@ -483,8 +527,7 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
 
             });
 
-            const { data: insertedData, error: insertError } = await supabase.from('sales').insert(salesToInsert).select('*, products(name, brand)');
-            if (insertError) throw insertError;
+            const insertedData = await salesService.create(salesToInsert);
 
             // Audit Log
             if (insertedData && insertedData.length > 0) {
@@ -783,7 +826,20 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                 <div className="flex items-center justify-between gap-1.5 px-0.5">
                                     <div className="flex items-center gap-1.5">
                                         <div className="px-1.5 py-0.5 bg-brand-red text-white text-[12px] font-black rounded uppercase tracking-tighter shadow-sm flex items-center justify-center h-[28px] min-w-[70px]">RECEIPT</div>
-                                        <div className="px-1.5 py-0.5 bg-surface border border-border-default text-[13px] font-data font-black text-text-primary rounded h-[28px] flex items-center justify-center min-w-[120px]">#{invoiceNumber}</div>
+                                        <div className="relative group">
+                                            <input 
+                                                type="text"
+                                                className="px-1.5 py-0.5 bg-surface border border-border-default text-[13px] font-data font-black text-text-primary rounded h-[28px] flex items-center justify-center min-w-[120px] outline-none focus:border-brand-red text-center uppercase transition-all"
+                                                value={invoiceNumber}
+                                                onChange={(e) => {
+                                                    const val = e.target.value.toUpperCase();
+                                                    setInvoiceNumber(val);
+                                                    setRawInvoiceNum(val.replace(/\D/g, ''));
+                                                }}
+                                                onFocus={(e) => e.target.select()}
+                                            />
+                                        </div>
+
                                         {/* Arrows */}
                                         <div className="flex bg-surface border border-border-default rounded h-[28px] overflow-hidden">
                                             <button type="button" onClick={() => stepInvoice(-1)} className="px-1 hover:bg-subtle text-text-muted transition-colors border-r border-border-default"><ChevronDown size={15} className="rotate-90" /></button>
@@ -840,7 +896,11 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                                                 onChange={(e) => handleItemChange(index, 'searchQuery', e.target.value)}
                                                                 onFocus={() => handleItemChange(index, 'isSearchOpen', true)}
                                                                 onKeyDown={(e) => {
-                                                                    const filtered = products.filter(p => isSmartMatch(`${p.name} ${p.brand || ''}`, item.searchQuery || '')).slice(0, 15);
+                                                                    const filtered = products.filter(p => {
+                                                                        const path = (p.category_id && categoryMap[p.category_id]) || '';
+                                                                        const searchIndex = `${p.name} ${p.brand || ''} ${p.sku || ''} ${path}`.toLowerCase();
+                                                                        return isSmartMatch(searchIndex, item.searchQuery || '');
+                                                                    }).slice(0, 15);
                                                                     if (e.key === 'ArrowDown') {
                                                                         e.preventDefault();
                                                                         const nextIdx = ((item.highlightedIndex || 0) + 1) % filtered.length;
@@ -859,10 +919,13 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                                             />
                                                             {item.isSearchOpen && (
                                                                 <div className="absolute z-[100] left-0 right-0 top-full mt-0.5 bg-surface border border-border-default rounded shadow-2xl max-h-[300px] overflow-y-auto min-w-[450px]">
-                                                                    {products.filter(p => isSmartMatch(`${p.name} ${p.brand || ''}`, item.searchQuery || '')).slice(0, 20).map((p, pIdx) => {
-                                                                        const parts = p.name.includes(' > ') ? p.name.split(' > ') : [p.name];
-                                                                        const name = parts[parts.length - 1];
-                                                                        const path = parts.slice(0, -1).join(' > ') + (parts.length > 1 ? ' >' : '');
+                                                                    {products.filter(p => {
+                                                                        const path = (p.category_id && categoryMap[p.category_id]) || '';
+                                                                        const searchIndex = `${p.name} ${p.brand || ''} ${p.sku || ''} ${path}`.toLowerCase();
+                                                                        return isSmartMatch(searchIndex, item.searchQuery || '');
+                                                                    }).slice(0, 20).map((p, pIdx) => {
+                                                                        const path = (p.category_id && categoryMap[p.category_id]) || '';
+                                                                        const name = p.name;
                                                                         
                                                                         return (
                                                                             <button 
@@ -872,11 +935,26 @@ export default function SalesModal({ isOpen, onClose, onSuccess, editData }: Sal
                                                                                 className={`w-full text-left px-4 py-3 border-b border-border-default transition-all flex items-start justify-between group h-auto ${item.highlightedIndex === pIdx ? 'bg-subtle ring-2 ring-inset ring-brand-red/10' : 'hover:bg-subtle'}`}
                                                                             >
                                                                                 <div className="flex-1 min-w-0 pr-4">
-                                                                                    {path && <div className="text-[11px] font-black uppercase text-text-primary mb-0.5 leading-tight opacity-50 tracking-tight">{path}</div>}
-                                                                                    <div className="text-[14px] font-black uppercase text-text-primary leading-tight break-words">
-                                                                                        {name} {p.brand && <span className="text-text-muted font-bold ml-1 text-[12px]">{p.brand}</span>}
+                                                                                    {path ? (
+                                                                                        <div className="text-[11px] font-black uppercase text-brand-red mb-1 leading-tight tracking-tight">
+                                                                                            {path}
+                                                                                        </div>
+                                                                                    ) : p.description ? (
+                                                                                        <div className="text-[10px] font-bold text-text-muted mb-1 leading-tight tracking-wide italic">
+                                                                                            {p.description.slice(0, 50)}...
+                                                                                        </div>
+                                                                                    ) : null}
+                                                                                    <div className="text-[15px] font-black uppercase text-text-primary leading-tight break-words flex items-center gap-2">
+                                                                                        {name}
+                                                                                        {p.brand && (
+                                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-black bg-brand-charcoal text-white uppercase tracking-tighter">
+                                                                                                {p.brand}
+                                                                                            </span>
+                                                                                        )}
                                                                                     </div>
-                                                                                    <div className="text-[10px] font-bold text-text-muted font-mono uppercase tracking-widest mt-1">STK: <span className="text-[11px] font-black text-teal-600">{p.stock_available} {p.unit || 'pcs'}</span></div>
+                                                                                    <div className="text-[10px] font-bold text-text-muted font-mono uppercase tracking-widest mt-1.5 flex items-center gap-1.5">
+                                                                                        STK: <span className="text-[12px] font-black text-teal-600 bg-teal-50 px-1.5 rounded">{p.stock_available} {p.unit || 'pcs'}</span>
+                                                                                    </div>
                                                                                 </div>
                                                                                 <div className="shrink-0 pt-0.5">
                                                                                     <div className="text-[18px] font-data font-black text-brand-red leading-none">₱{p.selling_price?.toLocaleString()}</div>

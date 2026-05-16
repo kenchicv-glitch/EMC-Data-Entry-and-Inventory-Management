@@ -701,10 +701,12 @@ export default function PurchaseModal({ isOpen, onClose, onSuccess, editData }: 
                                                 className="px-1.5 py-0.5 bg-surface border border-border-default text-[13px] font-data font-black text-text-primary rounded h-[28px] flex items-center justify-center min-w-[120px] outline-none focus:border-brand-red text-center uppercase transition-all"
                                                 value={invoiceNumber}
                                                 onChange={(e) => {
-                                                    setInvoiceNumber(e.target.value);
-                                                    setRawInvoiceNum(e.target.value.replace(/\D/g, ''));
+                                                    const val = e.target.value.toUpperCase();
+                                                    setInvoiceNumber(val);
+                                                    setRawInvoiceNum(val.replace(/\D/g, ''));
                                                 }}
                                                 onFocus={(e) => e.target.select()}
+
                                             />
                                         </div>
                                         {/* Arrows (Fixed for UI Consistency) */}

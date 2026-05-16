@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
     ChevronRight,
     ChevronDown,
     Folder,
     FolderOpen,
     Package,
+    PlusSquare,
+    MinusSquare,
 } from 'lucide-react';
 import type { CategoryTree } from '../types/product';
 
@@ -21,14 +23,18 @@ function TreeNode({
     onSelect,
     productCounts,
     depth,
+    expandedIds,
+    onToggle,
 }: {
     node: CategoryTree;
     selectedId: string | null;
     onSelect: (id: string | null) => void;
     productCounts?: Record<string, number>;
     depth: number;
+    expandedIds: Set<string>;
+    onToggle: (id: string) => void;
 }) {
-    const [isOpen, setIsOpen] = useState(depth === 0);
+    const isOpen = expandedIds.has(node.id);
     const hasChildren = node.children && node.children.length > 0;
     const isSelected = selectedId === node.id;
     const count = productCounts?.[node.id] ?? 0;
@@ -37,7 +43,7 @@ function TreeNode({
         <div>
             <button
                 onClick={() => {
-                    if (hasChildren) setIsOpen(o => !o);
+                    if (hasChildren) onToggle(node.id);
                     onSelect(node.id);
                 }}
                 className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left text-sm transition-all group
@@ -90,6 +96,8 @@ function TreeNode({
                             onSelect={onSelect}
                             productCounts={productCounts}
                             depth={depth + 1}
+                            expandedIds={expandedIds}
+                            onToggle={onToggle}
                         />
                     ))}
                 </div>
@@ -104,8 +112,53 @@ export default function CategoryTreeComponent({
     onSelect,
     productCounts,
 }: CategoryTreeProps) {
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+    const toggleId = (id: string) => {
+        const next = new Set(expandedIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        setExpandedIds(next);
+    };
+
+    const expandAll = () => {
+        const ids = new Set<string>();
+        const collect = (nodes: any[]) => {
+            nodes.forEach(n => {
+                if (n.children && n.children.length > 0) {
+                    ids.add(n.id);
+                    collect(n.children);
+                }
+            });
+        };
+        collect(tree);
+        setExpandedIds(ids);
+    };
+
+    const collapseAll = () => {
+        setExpandedIds(new Set());
+    };
+
     return (
         <div className="space-y-0.5">
+            {/* State controls */}
+            <div className="flex items-center gap-1 px-1 mb-2">
+                <button
+                    onClick={expandAll}
+                    className="flex items-center gap-1 px-2 py-1 rounded bg-bg-surface border border-border-default text-[10px] font-bold text-text-secondary hover:text-text-primary hover:bg-bg-subtle transition-all"
+                    title="Expand All"
+                >
+                    <PlusSquare size={10} /> Expand
+                </button>
+                <button
+                    onClick={collapseAll}
+                    className="flex items-center gap-1 px-2 py-1 rounded bg-bg-surface border border-border-default text-[10px] font-bold text-text-secondary hover:text-text-primary hover:bg-bg-subtle transition-all"
+                    title="Collapse All"
+                >
+                    <MinusSquare size={10} /> Collapse
+                </button>
+            </div>
+
             {/* All Products node */}
             <button
                 onClick={() => onSelect(null)}
@@ -128,6 +181,8 @@ export default function CategoryTreeComponent({
                     onSelect={onSelect}
                     productCounts={productCounts}
                     depth={0}
+                    expandedIds={expandedIds}
+                    onToggle={toggleId}
                 />
             ))}
         </div>

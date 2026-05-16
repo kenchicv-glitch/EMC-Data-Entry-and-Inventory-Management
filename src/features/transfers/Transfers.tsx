@@ -71,20 +71,22 @@ export default function Transfers() {
                 }
                 // Bulk Stock Check & Deduction
                 for (const item of itemsToProcess) {
-                    const { data: product, error: productError } = await supabase
-                        .from('products')
-                        .select('stock_available, id')
-                        .eq('sku', item.sku)
-                        .eq('branch_id', activeBranchId)
-                        .single();
+                    // Prefer product_id over SKU for lookup (SKU may have changed)
+                    let query = supabase.from('products').select('stock_available, id');
+                    if (item.product_id) {
+                        query = query.eq('id', item.product_id);
+                    } else {
+                        query = query.eq('sku', item.sku).eq('branch_id', activeBranchId);
+                    }
+                    const { data: product, error: productError } = await query.single();
 
                     if (productError || !product) {
-                        toast.error(`Product ${item.sku} not found in inventory`);
+                        toast.error(`Product ${item.name || item.sku} not found in inventory`);
                         return;
                     }
 
                     if (product.stock_available < item.quantity) {
-                        toast.error(`Insufficient stock for ${item.sku}! Available: ${product.stock_available}`);
+                        toast.error(`Insufficient stock for ${item.name || item.sku}! Available: ${product.stock_available}`);
                         return;
                     }
 
@@ -102,15 +104,17 @@ export default function Transfers() {
                 }
                 // Bulk Stock Addition
                 for (const item of itemsToProcess) {
-                    const { data: product, error: productError } = await supabase
-                        .from('products')
-                        .select('stock_available, id')
-                        .eq('sku', item.sku)
-                        .eq('branch_id', activeBranchId)
-                        .single();
+                    // Prefer product_id over SKU for lookup
+                    let query = supabase.from('products').select('stock_available, id');
+                    if (item.product_id) {
+                        query = query.eq('id', item.product_id);
+                    } else {
+                        query = query.eq('sku', item.sku).eq('branch_id', activeBranchId);
+                    }
+                    const { data: product, error: productError } = await query.single();
 
                     if (productError || !product) {
-                        toast.error(`Product ${item.sku} not found in local inventory.`);
+                        toast.error(`Product ${item.name || item.sku} not found in local inventory.`);
                         return;
                     }
 
@@ -195,12 +199,13 @@ export default function Transfers() {
             // 1. Rollback Source Branch (Add stock back if shipped or received)
             if (transfer.status === 'shipped' || transfer.status === 'received') {
                 for (const item of itemsToProcess) {
-                    const { data: product, error: productError } = await supabase
-                        .from('products')
-                        .select('stock_available, id')
-                        .eq('sku', item.sku)
-                        .eq('branch_id', transfer.source_branch_id)
-                        .single();
+                    let query = supabase.from('products').select('stock_available, id');
+                    if ((item as any).product_id) {
+                        query = query.eq('id', (item as any).product_id);
+                    } else {
+                        query = query.eq('sku', item.sku).eq('branch_id', transfer.source_branch_id);
+                    }
+                    const { data: product, error: productError } = await query.single();
 
                     if (!productError && product) {
                         const { error: updErr } = await supabase
@@ -215,12 +220,13 @@ export default function Transfers() {
             // 2. Rollback Destination Branch (Deduct stock if received)
             if (transfer.status === 'received') {
                 for (const item of itemsToProcess) {
-                    const { data: product, error: productError } = await supabase
-                        .from('products')
-                        .select('stock_available, id')
-                        .eq('sku', item.sku)
-                        .eq('branch_id', transfer.destination_branch_id)
-                        .single();
+                    let query = supabase.from('products').select('stock_available, id');
+                    if ((item as any).product_id) {
+                        query = query.eq('id', (item as any).product_id);
+                    } else {
+                        query = query.eq('sku', item.sku).eq('branch_id', transfer.destination_branch_id);
+                    }
+                    const { data: product, error: productError } = await query.single();
 
                     if (!productError && product) {
                         const { error: updErr } = await supabase

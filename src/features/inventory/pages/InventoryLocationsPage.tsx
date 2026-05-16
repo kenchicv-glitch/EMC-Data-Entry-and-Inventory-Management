@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { MapPin, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { MapPin, Plus, Pencil, Trash2, ArrowLeft } from 'lucide-react';
 import { useBranch } from '../../../shared/hooks/useBranch';
 import { useLocations, useCreateLocation, useUpdateLocation, useDeleteLocation } from '../hooks/useLocations';
 import LocationFormModal from '../components/LocationFormModal';
@@ -46,9 +47,18 @@ export default function InventoryLocationsPage() {
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-base font-black text-text-primary">Stock Locations</h2>
-                    <p className="text-xs text-text-muted">{locations.length} locations</p>
+                <div className="flex items-center gap-4">
+                    <Link
+                        to="/inventory"
+                        className="p-2 rounded-xl border border-border-default text-text-muted hover:text-text-primary hover:bg-bg-subtle transition-all"
+                        title="Back to Inventory"
+                    >
+                        <ArrowLeft size={16} />
+                    </Link>
+                    <div>
+                        <h2 className="text-base font-black text-text-primary">Stock Locations</h2>
+                        <p className="text-xs text-text-muted">{locations.length} locations</p>
+                    </div>
                 </div>
                 <button
                     onClick={openCreate}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
     ClipboardList,
     Plus,
@@ -7,6 +8,7 @@ import {
     XCircle,
     Clock,
     AlertTriangle,
+    ArrowLeft,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useBranch } from '../../../shared/hooks/useBranch';
@@ -88,11 +90,20 @@ export default function StocktakePage() {
         <div className="space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-base font-black text-text-primary">Physical Stocktake</h2>
-                    <p className="text-xs text-text-muted">
-                        {sessions.filter(s => s.status === 'in_progress').length} active sessions
-                    </p>
+                <div className="flex items-center gap-4">
+                    <Link
+                        to="/inventory"
+                        className="p-2 rounded-xl border border-border-default text-text-muted hover:text-text-primary hover:bg-bg-subtle transition-all"
+                        title="Back to Inventory"
+                    >
+                        <ArrowLeft size={16} />
+                    </Link>
+                    <div>
+                        <h2 className="text-base font-black text-text-primary">Physical Stocktake</h2>
+                        <p className="text-xs text-text-muted">
+                            {sessions.filter(s => s.status === 'in_progress').length} active sessions
+                        </p>
+                    </div>
                 </div>
                 {!activeSession && (
                     <button

@@ -4,6 +4,9 @@ export interface Product {
     name: string;
     description: string | null;
     brand: string | null;
+    variant_type: string | null;   // e.g., MAKAPAL, MANIPIS, FLAT WALL
+    size: string | null;           // e.g., 5.5MM, 1/4"x1", 40KG
+    legacy_sku: string | null;     // old breadcrumb path preserved for reference
     stock_available: number;
     stock_reserved: number;
     stock_damaged: number;
@@ -117,6 +120,8 @@ export interface ProductImportRow {
     name: string;
     description?: string;
     brand?: string;
+    variant_type?: string;    // e.g., MAKAPAL, MANIPIS
+    size?: string;            // e.g., 5.5MM, 1/4X1
     unit?: string;
     selling_price: number;
     buying_price: number;
