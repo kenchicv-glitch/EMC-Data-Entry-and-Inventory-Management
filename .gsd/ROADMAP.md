@@ -1,32 +1,40 @@
 # ROADMAP.md
 
-> **Current Phase**: Post-Implementation Maintenance & Bug Scrub
-> **Milestone**: v2.1 Performance & Accuracy Stability
+> **Current Phase**: Planning
+> **Milestone**: v2.2 — Data Integrity & DSC Integration
 
 ## Must-Haves (from SPEC)
-- [x] Corrected Gross Profit calculation (Revenue - COGS) with optional VAT.
-- [x] VAT-Inclusive toggle in Profit Analysis dashboard.
-- [x] Accurately reflected category distribution matching raw SRP totals.
-- [x] Performant Inventory search without navigation freezes.
-- [x] **Canonical 10-category system across all inventory modules.**
-- [x] **Universal color-coding and visibility for master categories.**
-- [ ] **STABLE: Two-way stock synchronization between Sales and Products.**
-
-## Phases
-
-### Phase 1-8: [COMPLETED] Basic Infrastructure & Dashboard Refinement
-- Service logic refactor, VAT toggles, UI stability, and editable invoice numbers.
+- [ ] **STABLE**: Two-way stock synchronization verified end-to-end in production (DB trigger audit)
+- [ ] SQL migrations deployed to Supabase (`inv_categories`, `inv_locations`, `inv_stocktakes`, `inv_stocktake_items`, `ALTER TABLE products`)
+- [ ] DSC Sync Preview UI — show pending sync items before committing
+- [ ] DSC idempotency — re-sync protection (no duplicate records)
+- [ ] `unrecordedShort` calculation fixed in `DailySummarySection.tsx`
+- [ ] `shortenProductName` deduplication fix in `dscSyncService.ts`
 
 ---
 
-### Phase FIX: Inventory-Sales Synchronization (CRITICAL)
+## Phases
+
+### Phase FIX-2: Stock Sync Production Verification
 **Status**: ⬜ Not Started
-**Objective**: Fix the "Phantom Stock" bug where creating a sale does not decrease inventory, but deleting one increases it.
+**Objective**: Empirically verify the stock decrement logic in production via the Supabase dashboard and simulated encoder workflow.
 **Tasks**:
-- [ ] Implement stock decrement in `salesService.create`.
-- [ ] Implement `inventory_adjustments` logging for all sales transactions (Sale, Delete, Refund).
-- [ ] Add backend validation to prevent "Selling more than available" at the service layer.
+- [ ] Simulation 1: Create sale for 10 units → Verify `products` table -10 in Supabase.
+- [ ] Simulation 2: Delete invoice → Verify `products` table returns to original count.
+- [ ] Simulation 3: Create refund → Verify `inventory_adjustments` log entry created.
 - [ ] Audit `useSales` and `SalesModal` for race conditions during rapid entry.
+
+---
+
+### Phase DB: Supabase SQL Migrations
+**Status**: ⬜ Not Started
+**Objective**: Deploy pending schema to production Supabase so Phase 10 inventory features are fully functional.
+**Tasks**:
+- [ ] Create `inv_categories` table.
+- [ ] Create `inv_locations` table.
+- [ ] Create `inv_stocktakes` table.
+- [ ] Create `inv_stocktake_items` table.
+- [ ] `ALTER TABLE products` — add `category_id`, `location_id`, `low_stock_threshold` columns.
 
 ---
 
@@ -41,16 +49,6 @@
 
 ---
 
-### Phase 10: Inventory Revamp — Full Module Overhaul
-**Status**: 🟡 Code Complete / Pending Verification
-**Objective**: Hierarchical product categorization, locations, and stocktakes.
-**Action Required**:
-- [ ] **Run SQL Migrations** in Supabase (Categories, Locations, Stocktake tables).
-- [ ] Verify hierarchical tree rendering in Sidebar.
-- [ ] Verify Excel Bulk Import with new category mapping.
-
----
-
 ### Phase 11: DSC Audit Fixes & Product Accuracy
 **Status**: ⬜ Not Started
 **Objective**: Fix reconciliation logic and product name duplication.
@@ -62,6 +60,6 @@
 ---
 
 ## Verification & Simulation (Encoder Path)
-- [ ] Simulation 1: Create sale for 10 units -> Verify `products` table -10.
-- [ ] Simulation 2: Delete invoice -> Verify `products` table returns to original.
-- [ ] Simulation 3: Sync to DSC -> Verify name is "Subcategory Item" without redundancy.
+- [ ] Simulation 1: Create sale for 10 units → Verify `products` table -10.
+- [ ] Simulation 2: Delete invoice → Verify `products` table returns to original.
+- [ ] Simulation 3: Sync to DSC → Verify name is "Subcategory Item" without redundancy.
